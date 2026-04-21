@@ -1,9 +1,9 @@
-<!DOCTYPE html>
+<<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Stickman Brawler</title>
+    <title>Stickman Brawler: Definitive Edition</title>
     <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser-arcade-physics.min.js"></script>
     <style>
         body { margin: 0; background: #000; overflow: hidden; touch-action: none; }
@@ -18,7 +18,7 @@ const config = {
     height: 480,
     scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
     input: { activePointers: 5 },
-    physics: { default: 'arcade', arcade: { gravity: { y: 1300 } } },
+    physics: { default: 'arcade', arcade: { gravity: { y: 1300 }, overlapBias: 30 } },
     scene: { preload: preload, create: create, update: update }
 };
 
@@ -81,7 +81,7 @@ function startMatch() {
     
     this.physics.add.collider([p1, p2], ground);
     this.physics.add.overlap(bullets, [p1, p2], (char, bullet) => {
-        if (bullet.owner !== char.id) {
+        if (bullet.active && bullet.owner !== char.id) {
             if (bullet.isSkill && bullet.launcher.type === 'Gunman') {
                 applyBleed(char);
                 dealDamage(bullet.launcher, char, 5, 10);
@@ -192,36 +192,29 @@ function applyBleed(target) {
 }
 
 function setupMobileControls() {
-    // --- P1 CONTROLS ---
-    // Left side D-Pad
-    drawBtn(this, 60, 370, '←', (v)=>p1.mLeft=v);
-    drawBtn(this, 180, 370, '→', (v)=>p1.mRight=v);
-    drawBtn(this, 120, 300, '↑', (v)=>{ if(v && p1.body.touching.down && gameState==='PLAYING') p1.body.setVelocityY(-600)});
+    // --- P1 MOVEMENT (LEFT SIDE) ---
+    drawBtn(this, 70, 400, '←', (v)=>p1.mLeft=v);
+    drawBtn(this, 210, 400, '→', (v)=>p1.mRight=v);
+    drawBtn(this, 140, 310, '↑', (v)=>{ if(v && p1.body.touching.down && gameState==='PLAYING') p1.body.setVelocityY(-600)});
     
-    // Right side Combat Buttons
-    drawBtn(this, 790, 370, 'ATK', (v)=>{ if(v && gameState==='PLAYING') handleCombat(p1, p2, 'atk') });
-    drawBtn(this, 700, 370, 'SKL', (v)=>{ if(v && gameState==='PLAYING') handleCombat(p1, p2, 'skl') });
-    drawBtn(this, 745, 290, 'BLK', (v)=>p1.isBlocking=v);
+    // --- P1 COMBAT (RIGHT SIDE) ---
+    drawBtn(this, 780, 390, 'ATK', (v)=>{ if(v && gameState==='PLAYING') handleCombat(p1, p2, 'atk') });
+    drawBtn(this, 670, 400, 'SKL', (v)=>{ if(v && gameState==='PLAYING') handleCombat(p1, p2, 'skl') });
+    drawBtn(this, 725, 300, 'BLK', (v)=>p1.isBlocking=v);
 
-    // --- P2 CONTROLS (Only if mode is 2) ---
     if(mode === 2) {
-        // We mirror P2's controls slightly higher or different positions if needed, 
-        // but for local brawler typical style is overlapping or screen ends.
-        // Let's place P2's dpad in top left and combat top right for a handheld feel, 
-        // or just mirror the bottom for a "couch" feel.
-        drawBtn(this, 60, 110, '←', (v)=>p2.mLeft=v);
-        drawBtn(this, 180, 110, '→', (v)=>p2.mRight=v);
-        drawBtn(this, 120, 180, '↑', (v)=>{ if(v && p2.body.touching.down && gameState==='PLAYING') p2.body.setVelocityY(-600)});
-        
-        drawBtn(this, 790, 110, 'ATK', (v)=>{ if(v && gameState==='PLAYING') handleCombat(p2, p1, 'atk') });
-        drawBtn(this, 700, 110, 'SKL', (v)=>{ if(v && gameState==='PLAYING') handleCombat(p2, p1, 'skl') });
-        drawBtn(this, 745, 180, 'BLK', (v)=>p2.isBlocking=v);
+        drawBtn(this, 70, 80, '←', (v)=>p2.mLeft=v);
+        drawBtn(this, 210, 80, '→', (v)=>p2.mRight=v);
+        drawBtn(this, 140, 160, '↑', (v)=>{ if(v && p2.body.touching.down && gameState==='PLAYING') p2.body.setVelocityY(-600)});
+        drawBtn(this, 780, 90, 'ATK', (v)=>{ if(v && gameState==='PLAYING') handleCombat(p2, p1, 'atk') });
+        drawBtn(this, 670, 80, 'SKL', (v)=>{ if(v && gameState==='PLAYING') handleCombat(p2, p1, 'skl') });
+        drawBtn(this, 725, 180, 'BLK', (v)=>p2.isBlocking=v);
     }
 }
 
 function drawBtn(scene, x, y, label, callback) {
-    let b = scene.add.circle(x, y, 40, 0xffffff, 0.1).setInteractive().setDepth(100);
-    scene.add.text(x, y, label, {fontSize: '18px', fontStyle: 'bold'}).setOrigin(0.5).setDepth(101);
+    let b = scene.add.circle(x, y, 45, 0xffffff, 0.15).setInteractive().setDepth(100);
+    scene.add.text(x, y, label, {fontSize: '20px', fontStyle: 'bold'}).setOrigin(0.5).setDepth(101);
     b.on('pointerdown', () => callback(true)); b.on('pointerup', () => callback(false));
 }
 
@@ -252,8 +245,9 @@ function update(time, delta) {
     this.p1Bar.width = Math.max(0, p1.hp) * 2;
     this.p2Bar.width = Math.max(0, p2.hp) * 2;
 
+    // PROJECTILE HEIGHT LOCK FIX
     bullets.getChildren().forEach(b => {
-        if (b.active && Math.abs(b.x - b.startX) > 400) b.destroy();
+        if (b.active) b.y = b.startY;
     });
 
     if(p1.hp <= 0 || p2.hp <= 0) endGame.call(this, p1.hp <= 0 ? "P2" : "P1");
@@ -276,7 +270,7 @@ function processAI(cpu, target) {
     let dist = Math.abs(cpu.x - target.x);
     cpu.isBlocking = (dist < 180 && cpu.blockStamina > 40 && !cpu.isBleeding && (target.atkCD > 0 || Math.random() > 0.85));
     
-    let ideal = cpu.type === 'Gunman' ? 320 : 70;
+    let ideal = cpu.type === 'Gunman' ? 380 : 70;
     if (dist > ideal + 20) {
         cpu.body.setVelocityX(cpu.x > target.x ? -160 : 160);
         cpu.facing = cpu.x > target.x ? -1 : 1;
@@ -291,17 +285,22 @@ function processAI(cpu, target) {
     cpu.list[2].x = cpu.facing * 20;
     cpu.list[2].scaleX = cpu.facing;
 
-    if (cpu.skillCD <= 0 && dist < 400) handleCombat(cpu, target, 'skl');
-    if (!cpu.isBlocking && cpu.atkCD <= 0 && (dist < 400 || cpu.type === 'Gunman')) handleCombat(cpu, target, 'atk');
+    if (cpu.skillCD <= 0 && dist < 600) handleCombat(cpu, target, 'skl');
+    if (!cpu.isBlocking && cpu.atkCD <= 0 && (dist < 600 || cpu.type === 'Gunman')) handleCombat(cpu, target, 'atk');
 }
 
 function shoot(a, isSkill = false) {
     let side = a.facing;
-    let b = a.scene.add.rectangle(a.x + (side * 45), a.y, 35, 6, isSkill ? 0xff0000 : 0xdddddd);
+    // HEIGHT FIX: Spawn bullet slightly up to align with gun center
+    let b = a.scene.add.rectangle(a.x + (side * 45), a.y - 5, 45, 8, isSkill ? 0xff0000 : 0xdddddd);
     a.scene.physics.add.existing(b);
+    
+    // PHYSICS FIX: Zero Gravity + High Speed + Y Lock
+    b.body.setAllowGravity(false);
+    b.body.setVelocityX(side * 1250);
     b.owner = a.id; b.launcher = a; b.isSkill = isSkill;
-    b.startX = b.x; 
-    b.body.setAllowGravity(false).setVelocityX(side * 950);
+    b.startY = b.y; // Capture Y to lock it in update
+    
     bullets.add(b);
     a.scene.time.delayedCall(2000, () => { if(b.active) b.destroy(); });
 }
@@ -311,7 +310,7 @@ function handleCombat(a, t, type) {
     let scene = a.scene;
 
     if(type === 'atk' && a.atkCD <= 0) {
-        a.atkCD = (a.type === 'Gunman') ? 950 : 650;
+        a.atkCD = (a.type === 'Gunman') ? 850 : 650;
         if(a.type === 'Gunman') shoot(a);
         else {
             scene.tweens.add({ targets: a.list[2], angle: a.facing > 0 ? 80 : -80, duration: 80, yoyo: true });

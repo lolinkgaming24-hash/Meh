@@ -192,20 +192,30 @@ function applyBleed(target) {
 }
 
 function setupMobileControls() {
-    drawBtn(this, 70, 350, '←', (v)=>p1.mLeft=v);
-    drawBtn(this, 170, 350, '→', (v)=>p1.mRight=v);
-    drawBtn(this, 120, 270, '↑', (v)=>{ if(v && p1.body.touching.down && gameState==='PLAYING') p1.body.setVelocityY(-600)});
-    drawBtn(this, 120, 430, 'BLK', (v)=>p1.isBlocking=v);
-    drawBtn(this, 280, 330, 'ATK', (v)=>{ if(v && gameState==='PLAYING') handleCombat(p1, p2, 'atk') });
-    drawBtn(this, 370, 410, 'SKL', (v)=>{ if(v && gameState==='PLAYING') handleCombat(p1, p2, 'skl') });
+    // --- P1 CONTROLS ---
+    // Left side D-Pad
+    drawBtn(this, 60, 370, '←', (v)=>p1.mLeft=v);
+    drawBtn(this, 180, 370, '→', (v)=>p1.mRight=v);
+    drawBtn(this, 120, 300, '↑', (v)=>{ if(v && p1.body.touching.down && gameState==='PLAYING') p1.body.setVelocityY(-600)});
+    
+    // Right side Combat Buttons
+    drawBtn(this, 790, 370, 'ATK', (v)=>{ if(v && gameState==='PLAYING') handleCombat(p1, p2, 'atk') });
+    drawBtn(this, 700, 370, 'SKL', (v)=>{ if(v && gameState==='PLAYING') handleCombat(p1, p2, 'skl') });
+    drawBtn(this, 745, 290, 'BLK', (v)=>p1.isBlocking=v);
 
+    // --- P2 CONTROLS (Only if mode is 2) ---
     if(mode === 2) {
-        drawBtn(this, 780, 350, '→', (v)=>p2.mRight=v);
-        drawBtn(this, 680, 350, '←', (v)=>p2.mLeft=v);
-        drawBtn(this, 730, 270, '↑', (v)=>{ if(v && p2.body.touching.down && gameState==='PLAYING') p2.body.setVelocityY(-600)});
-        drawBtn(this, 730, 430, 'BLK', (v)=>p2.isBlocking=v);
-        drawBtn(this, 570, 330, 'ATK', (v)=>{ if(v && gameState==='PLAYING') handleCombat(p2, p1, 'atk') });
-        drawBtn(this, 480, 410, 'SKL', (v)=>{ if(v && gameState==='PLAYING') handleCombat(p2, p1, 'skl') });
+        // We mirror P2's controls slightly higher or different positions if needed, 
+        // but for local brawler typical style is overlapping or screen ends.
+        // Let's place P2's dpad in top left and combat top right for a handheld feel, 
+        // or just mirror the bottom for a "couch" feel.
+        drawBtn(this, 60, 110, '←', (v)=>p2.mLeft=v);
+        drawBtn(this, 180, 110, '→', (v)=>p2.mRight=v);
+        drawBtn(this, 120, 180, '↑', (v)=>{ if(v && p2.body.touching.down && gameState==='PLAYING') p2.body.setVelocityY(-600)});
+        
+        drawBtn(this, 790, 110, 'ATK', (v)=>{ if(v && gameState==='PLAYING') handleCombat(p2, p1, 'atk') });
+        drawBtn(this, 700, 110, 'SKL', (v)=>{ if(v && gameState==='PLAYING') handleCombat(p2, p1, 'skl') });
+        drawBtn(this, 745, 180, 'BLK', (v)=>p2.isBlocking=v);
     }
 }
 

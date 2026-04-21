@@ -3,32 +3,33 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Stickman Brawler</title>
+    <title>Stickman Brawler: Ultra</title>
     <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser-arcade-physics.min.js"></script>
     <style>
-        body { margin: 0; background: #000; overflow: hidden; display: flex; justify-content: center; align-items: center; height: 100vh; }
-        canvas { box-shadow: 0 0 20px rgba(0,255,0,0.2); border: 2px solid #333; }
+        body { margin: 0; background: #000; overflow: hidden; touch-action: none; font-family: sans-serif; }
+        canvas { display: block; margin: 0 auto; }
     </style>
 </head>
 <body>
 <script>
+/**
+ * GEMINI AI - STICKMAN BRAWLER ENGINE
+ * Features: 5 Classes, AI, 2P Local, Mobile D-Pad, Dynamic Zoom
+ */
+
 const config = {
     type: Phaser.AUTO,
     width: 800,
     height: 450,
-    physics: {
-        default: 'arcade',
-        arcade: { gravity: { y: 1000 }, debug: false }
-    },
+    physics: { default: 'arcade', arcade: { gravity: { y: 1200 }, debug: false } },
     scene: { preload: preload, create: create, update: update }
 };
 
 const game = new Phaser.Game(config);
-
 let p1, p2, ground;
 let gameState = 'MENU';
 let mode = 1;
-let gameStarted = false;
+let selections = { p1: 'Swordman', p2: 'Swordman' };
 
 function preload() {}
 
@@ -37,129 +38,259 @@ function create() {
     showMenu.call(this);
 }
 
+// --- MENUS ---
 function showMenu() {
-    this.add.text(400, 150, 'STICKMAN BRAWL', { fontSize: '48px', color: '#fff' }).setOrigin(0.5);
-    
-    let btn1 = this.add.text(400, 250, '[ 1 PLAYER vs CPU ]', { fontSize: '24px', color: '#0f0' }).setOrigin(0.5).setInteractive();
-    let btn2 = this.add.text(400, 310, '[ 2 PLAYERS LOCAL ]', { fontSize: '24px', color: '#0f0' }).setOrigin(0.5).setInteractive();
-
-    btn1.on('pointerdown', () => startCharSelect.call(this, 1));
-    btn2.on('pointerdown', () => startCharSelect.call(this, 2));
+    this.children.removeAll();
+    this.add.text(400, 100, 'STICKMAN BRAWLER', { fontSize: '48px', color: '#fff', fontStyle: 'bold' }).setOrigin(0.5);
+    createBtn(this, 400, 220, '1 PLAYER (vs CPU)', () => { mode = 1; startSelection.call(this, 1); });
+    createBtn(this, 400, 300, '2 PLAYERS (LOCAL)', () => { mode = 2; startSelection.call(this, 1); });
 }
 
-function startCharSelect(m) {
-    mode = m;
+function startSelection(playerNum) {
     this.children.removeAll();
     const classes = ['Swordman', 'Gunman', 'Bomber', 'Digger', 'Engineer'];
-    
-    this.add.text(400, 50, 'SELECT YOUR FIGHTER', { fontSize: '32px' }).setOrigin(0.5);
+    this.add.text(400, 50, `PLAYER ${playerNum} SELECT`, { fontSize: '32px', color: playerNum === 1 ? '#0f0' : '#f00' }).setOrigin(0.5);
 
     classes.forEach((name, i) => {
-        let btn = this.add.text(400, 120 + (i * 60), name, { fontSize: '28px', color: '#fff' })
-            .setOrigin(0.5).setInteractive();
-        
-        btn.on('pointerover', () => btn.setStyle({ color: '#f0f' }));
-        btn.on('pointerout', () => btn.setStyle({ color: '#fff' }));
-        btn.on('pointerdown', () => initGame.call(this, name));
+        let btn = createBtn(this, 400, 120 + (i * 55), name, () => {
+            if (playerNum === 1) {
+                selections.p1 = name;
+                if (mode === 2) startSelection.call(this, 2);
+                else { selections.p2 = classes[Math.floor(Math.random() * 5)]; beginMatch.call(this); }
+            } else {
+                selections.p2 = name;
+                beginMatch.call(this);
+            }
+        });
     });
 }
 
-function initGame(p1Class) {
+// --- GAMEPLAY SETUP ---
+function beginMatch() {
     this.children.removeAll();
+    gameState = 'STARTING';
 
-    // Physics Ground
-    ground = this.add.rectangle(400, 440, 800, 20, 0x555555);
+    // World
+    ground = this.add.rectangle(400, 440, 2000, 40, 0x444444);
     this.physics.add.existing(ground, true);
 
-    // Players
-    p1 = createStickman(this, 150, 300, 0x00ff00, p1Class);
-    let p2Class = (mode === 1) ? 'Swordman' : p1Class;
-    p2 = createStickman(this, 650, 300, 0xff0000, p2Class);
-
+    // Characters
+    p1 = createChar(this, 150, 300, 0x00ff00, selections.p1, 1);
+    p2 = createChar(this, 650, 300, 0xff0000, selections.p2, 2);
+    
     this.physics.add.collider(p1, ground);
     this.physics.add.collider(p2, ground);
-    
-    // UI
-    this.p1HP = this.add.text(20, 20, 'P1: 100', { fontSize: '20px', color: '#0f0' });
-    this.p2HP = this.add.text(780, 20, 'P2: 100', { fontSize: '20px', color: '#f00' }).setOrigin(1, 0);
 
-    // Controls
-    this.keys = this.input.keyboard.addKeys('W,A,S,D,SPACE,F,Q');
-    this.cursors = this.input.keyboard.createCursorKeys();
+    setupHUD.call(this);
+    setupMobileControls.call(this);
 
-    gameStarted = true;
-    gameState = 'PLAYING';
+    // Keyboard
+    this.keys = this.input.keyboard.addKeys('W,A,S,D,SPACE,F,Q,UP,LEFT,RIGHT,ENTER,SHIFT');
+
+    // Countdown
+    let count = 3;
+    let txt = this.add.text(400, 200, '3', { fontSize: '80px', fontStyle: 'bold' }).setOrigin(0.5);
+    let timer = this.time.addEvent({
+        delay: 1000,
+        repeat: 3,
+        callback: () => {
+            count--;
+            if (count > 0) txt.setText(count);
+            else if (count === 0) txt.setText('FIGHT!');
+            else { txt.destroy(); gameState = 'PLAYING'; }
+        }
+    });
 }
 
-function createStickman(scene, x, y, color, type) {
+function createChar(scene, x, y, color, type, id) {
     let container = scene.add.container(x, y);
     
-    // Draw Sprite
-    let body = scene.add.line(0, 0, 0, 0, 0, 30, color).setLineWidth(4);
-    let head = scene.add.circle(0, -10, 8, color);
-    let lArm = scene.add.line(0, 5, 0, 0, -15, 10, color).setLineWidth(3);
-    let rArm = scene.add.line(0, 5, 0, 0, 15, 10, color).setLineWidth(3);
+    // Visuals based on class
+    let head = scene.add.circle(0, -30, 12, color);
+    let body = scene.add.line(0, -5, 0, 0, 0, 35, color).setLineWidth(4);
+    let weapon = scene.add.rectangle(20, -5, 25, 5, 0xffffff).setOrigin(0, 0.5);
+    if(type === 'Gunman') weapon.height = 8;
+    if(type === 'Bomber') weapon.setScale(0); // No visible weapon
     
-    container.add([body, head, lArm, rArm]);
-    
-    // Physics
+    container.add([body, head, weapon]);
     scene.physics.add.existing(container);
-    container.body.setSize(30, 50);
-    container.body.setCollideWorldBounds(true);
+    container.body.setCollideWorldBounds(true).setSize(40, 70).setOffset(-20, -40);
     
+    container.id = id;
     container.hp = 100;
-    container.charType = type;
-    container.skillCooldown = false;
+    container.type = type;
+    container.dir = (id === 1) ? 1 : -1;
+    container.skillCD = 0; // 0 to 100 for bar
+    container.isBlocking = false;
+    container.isDigging = false;
 
     return container;
 }
 
-function update() {
-    if (!gameStarted) return;
+function setupHUD() {
+    // P1 Health & CD
+    this.add.text(20, 10, 'P1: ' + selections.p1, { fontSize: '14px' });
+    this.p1Bar = this.add.rectangle(20, 30, 200, 15, 0x00ff00).setOrigin(0);
+    this.p1CDBar = this.add.rectangle(20, 50, 0, 5, 0xffff00).setOrigin(0);
 
-    // Player 1 Logic
-    if (this.keys.A.isDown) p1.body.setVelocityX(-200);
-    else if (this.keys.D.isDown) p1.body.setVelocityX(200);
+    // P2 Health & CD
+    this.add.text(780, 10, 'P2: ' + selections.p2, { fontSize: '14px' }).setOrigin(1, 0);
+    this.p2Bar = this.add.rectangle(780, 30, 200, 15, 0xff0000).setOrigin(1, 0);
+    this.p2CDBar = this.add.rectangle(780, 50, 0, 5, 0xffff00).setOrigin(1, 0);
+}
+
+function setupMobileControls() {
+    // Left Side P1
+    createMobileBtn(this, 60, 390, '←', () => p1.mLeft = true, () => p1.mLeft = false);
+    createMobileBtn(this, 140, 390, '→', () => p1.mRight = true, () => p1.mRight = false);
+    createMobileBtn(this, 100, 320, 'UP', () => { if(p1.body.touching.down) p1.body.setVelocityY(-550) });
+
+    // Right Side P1 Actions
+    createMobileBtn(this, 620, 390, 'ATK', () => doAtk(p1, p2));
+    createMobileBtn(this, 700, 390, 'SKL', () => doSkill(p1, p2, this));
+    createMobileBtn(this, 740, 320, 'BLK', () => p1.isBlocking = true, () => p1.isBlocking = false);
+}
+
+function createMobileBtn(scene, x, y, txt, onDown, onUp) {
+    let b = scene.add.circle(x, y, 35, 0x444444, 0.8).setInteractive().setScrollFactor(0).setDepth(10);
+    scene.add.text(x, y, txt, { fontSize: '18px' }).setOrigin(0.5).setScrollFactor(0).setDepth(11);
+    b.on('pointerdown', onDown);
+    if(onUp) { b.on('pointerup', onUp); b.on('pointerout', onUp); }
+}
+
+// --- LOGIC ---
+function update(time, delta) {
+    if (gameState !== 'PLAYING') return;
+
+    // Player 1 Movement
+    if (this.keys.A.isDown || p1.mLeft) { p1.body.setVelocityX(-220); p1.dir = -1; p1.list[2].x = -20; }
+    else if (this.keys.D.isDown || p1.mRight) { p1.body.setVelocityX(220); p1.dir = 1; p1.list[2].x = 20; }
     else p1.body.setVelocityX(0);
+    if (this.keys.W.isDown && p1.body.touching.down) p1.body.setVelocityY(-550);
+    if (Phaser.Input.Keyboard.JustDown(this.keys.SPACE)) doAtk(p1, p2);
+    if (Phaser.Input.Keyboard.JustDown(this.keys.F)) doSkill(p1, p2, this);
+    p1.isBlocking = this.keys.Q.isDown;
 
-    if (this.keys.W.isDown && p1.body.touching.down) p1.body.setVelocityY(-500);
-
-    // Attack (Space)
-    if (Phaser.Input.Keyboard.JustDown(this.keys.SPACE)) {
-        attack(p1, p2, 5);
-    }
-
-    // CPU Logic (Simple AI)
-    if (mode === 1) {
-        if (p2.x > p1.x + 60) p2.body.setVelocityX(-120);
-        else if (p2.x < p1.x - 60) p2.body.setVelocityX(120);
-        else {
-            p2.body.setVelocityX(0);
-            if (Math.random() > 0.98) attack(p2, p1, 5);
+    // P2 or AI
+    if (mode === 2) {
+        if (this.cursors.left.isDown) { p2.body.setVelocityX(-220); p2.dir = -1; }
+        else if (this.cursors.right.isDown) { p2.body.setVelocityX(220); p2.dir = 1; }
+        else p2.body.setVelocityX(0);
+        if (this.cursors.up.isDown && p2.body.touching.down) p2.body.setVelocityY(-550);
+    } else {
+        // AI Logic
+        let dist = p2.x - p1.x;
+        if (Math.abs(dist) > 80) p2.body.setVelocityX(dist > 0 ? -140 : 140);
+        else { 
+            p2.body.setVelocityX(0); 
+            if(Math.random() > 0.97) doAtk(p2, p1); 
+            if(Math.random() > 0.99) doSkill(p2, p1, this);
         }
     }
 
-    // Update UI
-    this.p1HP.setText('P1: ' + p1.hp);
-    this.p2HP.setText('P2: ' + p2.hp);
+    // Update Bars
+    this.p1Bar.width = Math.max(0, p1.hp * 2);
+    this.p2Bar.width = Math.max(0, p2.hp * 2);
+    
+    // Cooldown Logic
+    if(p1.skillCD > 0) p1.skillCD -= delta / 100;
+    if(p2.skillCD > 0) p2.skillCD -= delta / 100;
+    this.p1CDBar.width = p1.skillCD * 2;
+    this.p2CDBar.width = p2.skillCD * 2;
 
-    // Zooming Camera Logic
-    let dist = Phaser.Math.Distance.Between(p1.x, p1.y, p2.x, p2.y);
-    let zoom = Phaser.Math.Clamp(1.5 - (dist / 800), 0.8, 1.2);
+    // Zoom Camera
+    let distance = Phaser.Math.Distance.Between(p1.x, p1.y, p2.x, p2.y);
+    let zoom = Phaser.Math.Clamp(1.2 - (distance / 800), 0.7, 1.2);
     this.cameras.main.setZoom(zoom);
-    this.cameras.main.centerOn((p1.x + p2.x)/2, (p1.y + p2.y)/2);
-}
+    this.cameras.main.centerOn((p1.x + p2.x)/2, (p1.y + p2.y)/2 - 50);
 
-function attack(attacker, target, damage) {
-    if (Phaser.Math.Distance.Between(attacker.x, attacker.y, target.x, target.y) < 60) {
-        target.hp -= damage;
-        // Simple hit flash
-        target.iterate(child => { if(child.setTint) child.setTint(0xffffff); });
-        setTimeout(() => {
-            target.iterate(child => { if(child.clearTint) child.clearTint(); });
-        }, 100);
+    if (p1.hp <= 0 || p2.hp <= 0) {
+        gameState = 'OVER';
+        this.add.text(400, 200, p1.hp <= 0 ? 'PLAYER 2 WINS' : 'PLAYER 1 WINS', { fontSize: '48px' }).setOrigin(0.5);
+        setTimeout(() => location.reload(), 3000);
     }
 }
+
+function doAtk(a, t) {
+    if (a.isDigging) return;
+    // Animation
+    a.scene.tweens.add({ targets: a.list[2], angle: a.dir * 90, duration: 100, yoyo: true });
+    
+    if (Phaser.Math.Distance.Between(a.x, a.y, t.x, t.y) < 70) {
+        if (t.isBlocking) { t.hp -= 1; }
+        else if (!t.isDigging) { t.hp -= 5; }
+    }
+}
+
+function doSkill(a, t, scene) {
+    if (a.skillCD > 0 || a.isDigging) return;
+    a.skillCD = 100; // 10 second CD
+
+    switch(a.type) {
+        case 'Swordman':
+            scene.tweens.add({ targets: a, x: a.x + (a.dir * 150), duration: 200 });
+            if(Phaser.Math.Distance.Between(a.x, a.y, t.x, t.y) < 100) t.hp -= 15;
+            break;
+            
+        case 'Gunman':
+            let bullet = scene.add.rectangle(a.x, a.y - 10, 10, 5, 0xffff00);
+            scene.physics.add.existing(bullet);
+            bullet.body.setAllowGravity(false).setVelocityX(a.dir * 600);
+            scene.physics.add.overlap(bullet, t, () => { t.hp -= 20; bullet.destroy(); });
+            setTimeout(() => bullet.destroy(), 2000);
+            break;
+
+        case 'Bomber':
+            let circle = scene.add.circle(a.x, a.y, 10, 0xff0000);
+            scene.tweens.add({ targets: circle, scale: 8, alpha: 0, duration: 300, onComplete: () => circle.destroy() });
+            a.hp -= 5; // Self damage
+            if(Phaser.Math.Distance.Between(a.x, a.y, t.x, t.y) < 120) {
+                t.hp -= 15;
+                t.body.setVelocityY(-400); // Stun/Knockback
+            }
+            break;
+
+        case 'Digger':
+            a.isDigging = true;
+            a.alpha = 0.2;
+            a.body.setAllowGravity(false);
+            a.y += 50;
+            setTimeout(() => {
+                a.isDigging = false;
+                a.alpha = 1;
+                a.body.setAllowGravity(true);
+                a.y -= 50;
+                if(Phaser.Math.Distance.Between(a.x, a.y, t.x, t.y) < 60) t.hp -= 10;
+            }, 3000);
+            break;
+
+        case 'Engineer':
+            let turret = scene.add.rectangle(a.x, a.y + 20, 20, 20, 0xaaaaaa);
+            scene.physics.add.existing(turret);
+            turret.body.setImmovable(true).setAllowGravity(false);
+            let shots = 0;
+            let interval = setInterval(() => {
+                if (shots++ > 5) { turret.destroy(); clearInterval(interval); }
+                if(Phaser.Math.Distance.Between(turret.x, turret.y, t.x, t.y) < 300) t.hp -= 3;
+            }, 500);
+            break;
+    }
+}
+
+function createBtn(scene, x, y, txt, cb) {
+    let b = scene.add.text(x, y, txt, { 
+        fontSize: '24px', 
+        backgroundColor: '#333', 
+        padding: { x: 20, y: 10 },
+        color: '#fff'
+    }).setOrigin(0.5).setInteractive();
+    
+    b.on('pointerover', () => b.setStyle({ backgroundColor: '#555' }));
+    b.on('pointerout', () => b.setStyle({ backgroundColor: '#333' }));
+    b.on('pointerdown', cb);
+    return b;
+}
+
 </script>
 </body>
 </html>

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Stickman Brawler: Definitive Edition</title>
+    <title>Stickman Brawler </title>
     <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser-arcade-physics.min.js"></script>
     <style>
         body { margin: 0; background: #000; overflow: hidden; touch-action: none; }
@@ -242,6 +242,11 @@ function update(time, delta) {
     this.p1Bar.width = Math.max(0, p1.hp) * 2;
     this.p2Bar.width = Math.max(0, p2.hp) * 2;
 
+    // --- RANGE LOGIC: Destroy bullets that travel too far ---
+    bullets.getChildren().forEach(b => {
+        if (b.active && Math.abs(b.x - b.startX) > 400) b.destroy();
+    });
+
     if(p1.hp <= 0 || p2.hp <= 0) endGame.call(this, p1.hp <= 0 ? "P2" : "P1");
 }
 
@@ -286,6 +291,7 @@ function shoot(a, isSkill = false) {
     let b = a.scene.add.rectangle(a.x + (side * 45), a.y, 18, 4, isSkill ? 0xff0000 : 0xdddddd);
     a.scene.physics.add.existing(b);
     b.owner = a.id; b.launcher = a; b.isSkill = isSkill;
+    b.startX = b.x; // --- Store initial position for range check ---
     b.body.setAllowGravity(false).setVelocityX(side * 950);
     bullets.add(b);
     a.scene.time.delayedCall(2000, () => { if(b.active) b.destroy(); });

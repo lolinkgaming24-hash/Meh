@@ -75,13 +75,11 @@ function startMatch() {
     this.physics.add.collider(p1, ground);
     this.physics.add.collider(p2, ground);
 
-    // Setup HUD (Health Bars)
     this.p1Bar = this.add.rectangle(20, 20, 200, 15, 0x00ff00).setOrigin(0).setScrollFactor(0);
     this.p2Bar = this.add.rectangle(780, 20, 200, 15, 0xff0000).setOrigin(1, 0).setScrollFactor(0);
 
     setupMobileControls.call(this);
 
-    // Countdown
     let count = 3;
     let txt = this.add.text(400, 200, '3', { fontSize: '64px' }).setOrigin(0.5);
     let timer = setInterval(() => {
@@ -103,20 +101,16 @@ function createChar(scene, x, y, color, type, id) {
 }
 
 function setupMobileControls() {
-    // We use Screen Dimensions to ensure buttons are visible
     const viewW = 800;
     const viewH = 450;
 
-    // LEFT DPAD
     drawButton(this, 60, viewH - 60, '←', () => p1.mLeft = true, () => p1.mLeft = false);
     drawButton(this, 140, viewH - 60, '→', () => p1.mRight = true, () => p1.mRight = false);
     drawButton(this, 100, viewH - 130, '↑', () => { if(p1.body.touching.down) p1.body.setVelocityY(-500) });
 
-    // RIGHT ACTION BUTTONS
     drawButton(this, viewW - 140, viewH - 60, 'ATK', () => combat(p1, p2, 'atk'));
     drawButton(this, viewW - 60, viewH - 60, 'SKL', () => combat(p1, p2, 'skl'));
     
-    // Add P2 controls only if 2 Player mode
     if(mode === 2) {
         drawButton(this, viewW - 140, 100, 'P2 ←', () => p2.mLeft = true, () => p2.mLeft = false);
         drawButton(this, viewW - 60, 100, 'P2 →', () => p2.mRight = true, () => p2.mRight = false);
@@ -124,16 +118,8 @@ function setupMobileControls() {
 }
 
 function drawButton(scene, x, y, label, downFn, upFn) {
-    let circle = scene.add.circle(x, y, 35, 0xffffff, 0.2)
-        .setInteractive()
-        .setScrollFactor(0)
-        .setDepth(100);
-    
-    scene.add.text(x, y, label, { fontSize: '18px', color: '#fff' })
-        .setOrigin(0.5)
-        .setScrollFactor(0)
-        .setDepth(101);
-
+    let circle = scene.add.circle(x, y, 35, 0xffffff, 0.2).setInteractive().setScrollFactor(0).setDepth(100);
+    scene.add.text(x, y, label, { fontSize: '18px', color: '#fff' }).setOrigin(0.5).setScrollFactor(0).setDepth(101);
     circle.on('pointerdown', downFn);
     if(upFn) {
         circle.on('pointerup', upFn);
@@ -144,23 +130,21 @@ function drawButton(scene, x, y, label, downFn, upFn) {
 function update(time, delta) {
     if (gameState !== 'PLAYING') return;
 
-    // P1 Movement
     if (this.keys.A.isDown || p1.mLeft) p1.body.setVelocityX(-200);
     else if (this.keys.D.isDown || p1.mRight) p1.body.setVelocityX(200);
     else p1.body.setVelocityX(0);
     if (Phaser.Input.Keyboard.JustDown(this.keys.SPACE)) combat(p1, p2, 'atk');
 
-    // AI logic
     if (mode === 1) {
         let d = p2.x - p1.x;
-        if (Math.abs(d) > 60) p2.body.setVelocityX(d > 0 ? -120 : 120);
+        let ideal = p2.type === 'Gunman' ? 250 : 60;
+        if (Math.abs(d) > ideal) p2.body.setVelocityX(d > 0 ? -120 : 120);
         else { p2.body.setVelocityX(0); if(Math.random() > 0.98) combat(p2, p1, 'atk'); }
     }
 
     this.p1Bar.width = p1.hp * 2;
     this.p2Bar.width = p2.hp * 2;
 
-    // Zoom
     let dist = Phaser.Math.Distance.Between(p1.x, p1.y, p2.x, p2.y);
     this.cameras.main.setZoom(Phaser.Math.Clamp(1.2 - (dist/900), 0.7, 1.1));
     this.cameras.main.centerOn((p1.x + p2.x)/2, (p1.y + p2.y)/2);
@@ -168,8 +152,31 @@ function update(time, delta) {
 
 function combat(a, t, type) {
     let dist = Phaser.Math.Distance.Between(a.x, a.y, t.x, t.y);
-    if (type === 'atk' && dist < 60) t.hp -= 5;
-    if (type === 'skl' && dist < 100) { t.hp -= 15; a.body.setVelocityY(-200); }
+    
+    // GUNMAN LOGIC: Range is 400 (half screen)
+    if (a.type === 'Gunman') {
+        let range = 400;
+        // Visual Bullet Effect
+        let bullet = a.scene.add.rectangle(a.x, a.y, 15, 3, 0xffff00);
+        let direction = t.x > a.x ? 1 : -1;
+        a.scene.tweens.add({
+            targets: bullet,
+            x: a.x + (range * direction),
+            alpha: 0,
+            duration: 300,
+            onComplete: () => bullet.destroy()
+        });
+
+        // Damage check
+        if (dist < range) {
+            if (type === 'atk') t.hp -= 5;
+            if (type === 'skl') { t.hp -= 15; a.body.setVelocityY(-200); }
+        }
+    } else {
+        // MELEE LOGIC (Original)
+        if (type === 'atk' && dist < 60) t.hp -= 5;
+        if (type === 'skl' && dist < 100) { t.hp -= 15; a.body.setVelocityY(-200); }
+    }
 }
 
 function createBtn(scene, x, y, txt, cb) {

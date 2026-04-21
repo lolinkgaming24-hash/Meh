@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Stickman Brawler: Final Balance</title>
+    <title>Stickman Brawler: Sniper Update</title>
     <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser-arcade-physics.min.js"></script>
     <style>
         body { margin: 0; background: #000; overflow: hidden; touch-action: none; }
@@ -76,12 +76,11 @@ function startMatch() {
     let ground = this.add.rectangle(425, 470, 850, 20, 0x222);
     this.physics.add.existing(ground, true);
 
-    p1 = createChar(this, 200, 300, 0x00ff00, char1, 1);
-    p2 = createChar(this, 650, 300, 0xff0000, char2, 2);
+    p1 = createChar(this, 150, 300, 0x00ff00, char1, 1);
+    p2 = createChar(this, 700, 300, 0xff0000, char2, 2);
     
     this.physics.add.collider([p1, p2], ground);
     
-    // COLLISION RE-WRITE FOR GUNMAN ACCURACY
     this.physics.add.overlap(bullets, [p1, p2], (char, bullet) => {
         if (bullet.owner !== char.id) {
             if (bullet.isSkill && bullet.launcher.type === 'Gunman') {
@@ -98,10 +97,6 @@ function startMatch() {
     this.p1CD = this.add.rectangle(20, 50, 0, 6, 0xffff00).setOrigin(0);
     this.p2Bar = this.add.rectangle(830, 25, 200, 20, 0xff0000).setOrigin(1, 0);
     this.p2CD = this.add.rectangle(830, 50, 0, 6, 0xffff00).setOrigin(1, 0);
-
-    let pauseBtn = this.add.text(425, 25, '||', { fontSize: '24px', backgroundColor: '#333', padding: 5 })
-        .setOrigin(0.5).setInteractive().setDepth(200);
-    pauseBtn.on('pointerdown', () => togglePause.call(this));
 
     setupMobileControls.call(this);
     this.keys = this.input.keyboard.addKeys('W,A,S,D,UP,LEFT,RIGHT,DOWN');
@@ -120,20 +115,6 @@ function startMatch() {
         },
         repeat: 3
     });
-}
-
-function togglePause() {
-    if (gameState === 'END' || gameState === 'STARTING') return;
-    if (gameState === 'PLAYING') {
-        gameState = 'PAUSED'; this.physics.pause();
-        this.pausePanel = this.add.container(425, 240).setDepth(300);
-        let bg = this.add.rectangle(0, 0, 300, 220, 0x000, 0.9).setStrokeStyle(2, 0xfff);
-        this.pausePanel.add([bg, this.add.text(0, -70, 'PAUSED', { fontSize: '32px' }).setOrigin(0.5)]);
-        this.pausePanel.add(createMenuBtn(this, 0, -10, 'RESUME', () => togglePause.call(this)));
-        this.pausePanel.add(createMenuBtn(this, 0, 60, 'MAIN MENU', () => showMenu.call(this)));
-    } else {
-        gameState = 'PLAYING'; this.physics.resume(); this.pausePanel.destroy();
-    }
 }
 
 function createChar(scene, x, y, color, type, id) {
@@ -244,27 +225,29 @@ function processAI(cpu, target) {
     let dist = Math.abs(cpu.x - target.x);
     cpu.isBlocking = (dist < 180 && cpu.blockStamina > 40 && !cpu.isBleeding && (target.atkCD > 0 || Math.random() > 0.85));
     
-    // Engineer AI logic: if shielded, stay aggressive
-    let ideal = (cpu.type === 'Gunman') ? 320 : (cpu.shieldHits > 0 ? 30 : 70);
+    // Gunman AI stays much further back
+    let ideal = (cpu.type === 'Gunman') ? 400 : (cpu.shieldHits > 0 ? 30 : 70);
     
     if (dist > ideal + 20) { cpu.body.setVelocityX(cpu.x > target.x ? -160 : 160); cpu.facing = cpu.x > target.x ? -1 : 1; }
     else if (dist < ideal - 20) { cpu.body.setVelocityX(cpu.x > target.x ? 160 : -160); cpu.facing = cpu.x > target.x ? 1 : -1; }
     else { cpu.body.setVelocityX(0); cpu.facing = cpu.x > target.x ? -1 : 1; }
     
     cpu.list[2].x = cpu.facing * 20; cpu.list[2].scaleX = cpu.facing;
-    if (cpu.skillCD <= 0 && dist < 400) handleCombat(cpu, target, 'skl');
-    if (!cpu.isBlocking && cpu.atkCD <= 0 && (dist < 100 || cpu.type === 'Gunman')) handleCombat(cpu, target, 'atk');
+    if (cpu.skillCD <= 0 && dist < 600) handleCombat(cpu, target, 'skl');
+    if (!cpu.isBlocking && cpu.atkCD <= 0 && (dist < 500 || cpu.type !== 'Gunman')) handleCombat(cpu, target, 'atk');
 }
 
 function shoot(a, isSkill = false) {
     let side = a.facing;
-    // Spawn bullet further out so it doesn't overlap shooter
-    let b = a.scene.add.rectangle(a.x + (side * 50), a.y, 22, 6, isSkill ? 0xff0000 : 0xdddddd);
+    // Spawn bullet further out and precisely at weapon height
+    let b = a.scene.add.rectangle(a.x + (side * 55), a.y - 5, 24, 6, isSkill ? 0xff0000 : 0xdddddd);
     a.scene.physics.add.existing(b);
     b.owner = a.id; b.launcher = a; b.isSkill = isSkill;
-    b.body.setAllowGravity(false).setVelocityX(side * 1050); // Faster for better hit detection
+    // Set fixed high velocity - Gunman range is now screen-wide
+    b.body.setAllowGravity(false).setVelocityX(side * 1200); 
     bullets.add(b);
-    a.scene.time.delayedCall(1500, () => { if(b.active) b.destroy(); });
+    // Cleanup only if it leaves screen or after long time
+    a.scene.time.delayedCall(3000, () => { if(b.active) b.destroy(); });
 }
 
 function handleCombat(a, t, type) {
@@ -287,7 +270,7 @@ function handleCombat(a, t, type) {
         if(a.type === 'Gunman') { shoot(a, true); }
         else if(a.type === 'Engineer') { 
             a.shieldHits = 3; 
-            scene.time.delayedCall(5000, () => { a.shieldHits = 0; }); // Shield decay
+            scene.time.delayedCall(5000, () => { a.shieldHits = 0; });
         }
         else if(a.type === 'Digger') { a.isStealth = true; scene.time.delayedCall(3000, () => a.isStealth = false); }
         else if(a.type === 'Bomber') {

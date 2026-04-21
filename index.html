@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Stickman Brawler Final</title>
+    <title>Stickman Brawler: Engineer Update</title>
     <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser-arcade-physics.min.js"></script>
     <style>
         body { margin: 0; background: #000; overflow: hidden; touch-action: none; }
@@ -17,6 +17,7 @@ const config = {
     width: 800,
     height: 450,
     scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
+    input: { activePointers: 10 }, 
     physics: { default: 'arcade', arcade: { gravity: { y: 1200 } } },
     scene: { preload: preload, create: create, update: update }
 };
@@ -34,7 +35,7 @@ function create() {
 
 function showMenu() {
     this.children.removeAll();
-    this.add.text(400, 100, 'STICKMAN BRAWLER', { fontSize: '42px', color: '#fff' }).setOrigin(0.5);
+    this.add.text(400, 100, 'STICKMAN BRAWLER', { fontSize: '42px', color: '#fff', fontStyle: 'bold' }).setOrigin(0.5);
     createBtn(this, 400, 220, '1 PLAYER (vs CPU)', () => { mode = 1; selectP1.call(this); });
     createBtn(this, 400, 300, '2 PLAYERS (LOCAL)', () => { mode = 2; selectP1.call(this); });
 }
@@ -72,13 +73,10 @@ function startMatch() {
     this.physics.add.collider(p1, ground);
     this.physics.add.collider(p2, ground);
 
-    // Health Bars
     this.p1Bar = this.add.rectangle(20, 20, 200, 15, 0x00ff00).setOrigin(0);
     this.p2Bar = this.add.rectangle(780, 20, 200, 15, 0xff0000).setOrigin(1, 0);
-
-    // Cooldown Bars (Yellow)
-    this.p1CD = this.add.rectangle(20, 40, 0, 5, 0xffff00).setOrigin(0);
-    this.p2CD = this.add.rectangle(780, 40, 0, 5, 0xffff00).setOrigin(1, 0);
+    this.p1CD = this.add.rectangle(20, 37, 0, 5, 0xffff00).setOrigin(0);
+    this.p2CD = this.add.rectangle(780, 37, 0, 5, 0xffff00).setOrigin(1, 0);
 
     setupMobileControls.call(this);
 
@@ -90,94 +88,142 @@ function startMatch() {
         if(count < 0) { txt.destroy(); gameState = 'PLAYING'; clearInterval(timer); }
     }, 1000);
 
-    this.keys = this.input.keyboard.addKeys('W,A,S,D,SPACE,F,Q,UP,LEFT,RIGHT,ENTER,SHIFT,P');
+    this.keys = this.input.keyboard.addKeys('W,A,S,D,SPACE,F,UP,LEFT,RIGHT,ENTER,P');
 }
 
 function createChar(scene, x, y, color, type, id) {
     let c = scene.add.container(x, y);
-    c.add([scene.add.circle(0, -15, 12, color), scene.add.rectangle(0, 10, 4, 30, color)]);
+    let head = scene.add.circle(0, -15, 12, color);
+    let body = scene.add.rectangle(0, 10, 4, 30, color);
+    
+    // Weapon Graphics
+    let weapon;
+    if(type === 'Swordman') weapon = scene.add.rectangle(15, 0, 25, 4, 0xaaaaaa);
+    else if(type === 'Gunman') weapon = scene.add.rectangle(15, 0, 20, 8, 0x555555);
+    else if(type === 'Bomber') weapon = scene.add.circle(15, 0, 8, 0x333333);
+    else if(type === 'Digger') weapon = scene.add.rectangle(15, 0, 20, 4, 0x8b4513);
+    else weapon = scene.add.rectangle(15, 0, 15, 10, 0x444444); // Engineer Wrench
+
+    // Shield Sprite (Hidden initially)
+    let shield = scene.add.circle(0, 0, 40, 0x00ccff, 0.3).setStrokeStyle(2, 0x00ffff).setVisible(false);
+    
+    c.add([head, body, weapon, shield]);
     scene.physics.add.existing(c);
     c.body.setCollideWorldBounds(true).setSize(30, 50);
-    c.hp = 100; c.type = type; c.id = id; c.cd = 0; c.isBlocking = false;
+    
+    c.hp = 100; c.type = type; c.id = id; c.cd = 0;
+    c.shieldHits = 0; // Hits the shield can take
     return c;
 }
 
 function setupMobileControls() {
-    // P1 Controls (Bottom Left)
-    drawBtn(this, 50, 400, '←', () => p1.mLeft = true, () => p1.mLeft = false);
-    drawBtn(this, 120, 400, '→', () => p1.mRight = true, () => p1.mRight = false);
-    drawBtn(this, 85, 340, '↑', () => { if(p1.body.touching.down) p1.body.setVelocityY(-500) });
-    drawBtn(this, 200, 400, 'ATK', () => combat(p1, p2, 'atk'));
-    drawBtn(this, 270, 400, 'SKL', () => combat(p1, p2, 'skl'));
+    drawBtn(this, 50, 400, '←', (v)=>p1.mLeft=v);
+    drawBtn(this, 120, 400, '→', (v)=>p1.mRight=v);
+    drawBtn(this, 85, 340, '↑', (v)=>{ if(v && p1.body.touching.down) p1.body.setVelocityY(-500) });
+    drawBtn(this, 200, 400, 'ATK', (v)=>{ if(v) combat(p1, p2, 'atk') });
+    drawBtn(this, 270, 400, 'SKL', (v)=>{ if(v) combat(p1, p2, 'skl') });
 
-    // P2 Controls (Bottom Right) - Only if Mode 2
     if(mode === 2) {
-        drawBtn(this, 750, 400, '→', () => p2.mRight = true, () => p2.mRight = false);
-        drawBtn(this, 680, 400, '←', () => p2.mLeft = true, () => p2.mLeft = false);
-        drawBtn(this, 715, 340, '↑', () => { if(p2.body.touching.down) p2.body.setVelocityY(-500) });
-        drawBtn(this, 600, 400, 'ATK', () => combat(p2, p1, 'atk'));
-        drawBtn(this, 530, 400, 'SKL', () => combat(p2, p1, 'skl'));
+        drawBtn(this, 750, 400, '→', (v)=>p2.mRight=v);
+        drawBtn(this, 680, 400, '←', (v)=>p2.mLeft=v);
+        drawBtn(this, 715, 340, '↑', (v)=>{ if(v && p2.body.touching.down) p2.body.setVelocityY(-500) });
+        drawBtn(this, 600, 400, 'ATK', (v)=>{ if(v) combat(p2, p1, 'atk') });
+        drawBtn(this, 530, 400, 'SKL', (v)=>{ if(v) combat(p2, p1, 'skl') });
     }
 }
 
-function drawBtn(scene, x, y, label, down, up) {
-    let b = scene.add.circle(x, y, 30, 0x555, 0.8).setInteractive().setDepth(100);
+function drawBtn(scene, x, y, label, callback) {
+    let b = scene.add.circle(x, y, 30, 0xffffff, 0.2).setInteractive().setDepth(100);
     scene.add.text(x, y, label).setOrigin(0.5).setDepth(101);
-    b.on('pointerdown', down);
-    if(up) { b.on('pointerup', up); b.on('pointerout', up); }
+    b.on('pointerdown', () => callback(true));
+    b.on('pointerup', () => callback(false));
+    b.on('pointerout', () => callback(false));
 }
 
 function update(time, delta) {
     if (gameState !== 'PLAYING') return;
 
-    // Player 1 Input
-    if (this.keys.A.isDown || p1.mLeft) p1.body.setVelocityX(-200);
-    else if (this.keys.D.isDown || p1.mRight) p1.body.setVelocityX(200);
-    else p1.body.setVelocityX(0);
-    if (Phaser.Input.Keyboard.JustDown(this.keys.W) && p1.body.touching.down) p1.body.setVelocityY(-500);
+    // Movement Logic
+    handleMove(p1, this.keys.A, this.keys.D);
+    if(mode === 2) handleMove(p2, this.keys.LEFT, this.keys.RIGHT);
+    else handleAI(p2, p1);
+
+    // Keyboard Combat
     if (Phaser.Input.Keyboard.JustDown(this.keys.SPACE)) combat(p1, p2, 'atk');
     if (Phaser.Input.Keyboard.JustDown(this.keys.F)) combat(p1, p2, 'skl');
-
-    // Player 2 Input
     if (mode === 2) {
-        if (this.keys.LEFT.isDown || p2.mLeft) p2.body.setVelocityX(-200);
-        else if (this.keys.RIGHT.isDown || p2.mRight) p2.body.setVelocityX(200);
-        else p2.body.setVelocityX(0);
-        if (Phaser.Input.Keyboard.JustDown(this.keys.UP) && p2.body.touching.down) p2.body.setVelocityY(-500);
         if (Phaser.Input.Keyboard.JustDown(this.keys.ENTER)) combat(p2, p1, 'atk');
         if (Phaser.Input.Keyboard.JustDown(this.keys.P)) combat(p2, p1, 'skl');
-    } else {
-        // AI Logic
-        let d = p2.x - p1.x;
-        if (Math.abs(d) > 65) p2.body.setVelocityX(d > 0 ? -120 : 120);
-        else { p2.body.setVelocityX(0); if(Math.random() > 0.98) combat(p2, p1, 'atk'); }
     }
 
-    // Cooldown Bars (10 seconds = 10000ms)
+    // Shield Visibility
+    p1.list[3].setVisible(p1.shieldHits > 0);
+    p2.list[3].setVisible(p2.shieldHits > 0);
+
+    // Cooldowns
     if(p1.cd > 0) p1.cd -= delta;
     if(p2.cd > 0) p2.cd -= delta;
-    this.p1CD.width = (p1.cd / 10000) * 200;
-    this.p2CD.width = (p2.cd / 10000) * 200;
+    this.p1CD.width = (Math.max(0, p1.cd) / 10000) * 200;
+    this.p2CD.width = (Math.max(0, p2.cd) / 10000) * 200;
 
-    this.p1Bar.width = p1.hp * 2;
-    this.p2Bar.width = p2.hp * 2;
+    this.p1Bar.width = Math.max(0, p1.hp) * 2;
+    this.p2Bar.width = Math.max(0, p2.hp) * 2;
 
     if(p1.hp <= 0 || p2.hp <= 0) {
-        this.add.text(400, 200, p1.hp <= 0 ? "P2 WINS" : "P1 WINS", {fontSize: '48px'}).setOrigin(0.5);
+        this.add.text(400, 200, p1.hp <= 0 ? "P2 WINS" : "P1 WINS", {fontSize: '48px', color: '#fff'}).setOrigin(0.5);
         gameState = "END";
         setTimeout(() => location.reload(), 3000);
     }
 }
 
+function handleMove(p, kL, kR) {
+    if (kL.isDown || p.mLeft) p.body.setVelocityX(-200);
+    else if (kR.isDown || p.mRight) p.body.setVelocityX(200);
+    else p.body.setVelocityX(0);
+}
+
+function handleAI(cpu, target) {
+    let d = cpu.x - target.x;
+    if (Math.abs(d) > 70) cpu.body.setVelocityX(d > 0 ? -120 : 120);
+    else { cpu.body.setVelocityX(0); if(Math.random() > 0.98) combat(cpu, target, 'atk'); }
+}
+
 function combat(a, t, type) {
     let d = Phaser.Math.Distance.Between(a.x, a.y, t.x, t.y);
-    if (type === 'atk' && d < 60) t.hp -= 5;
+    let scene = a.scene;
+
+    if (type === 'atk' && d < 70) {
+        if (t.shieldHits > 0) { t.shieldHits--; }
+        else { t.hp -= 5; }
+        let spark = scene.add.circle(t.x, t.y, 5, 0xffffff);
+        scene.tweens.add({ targets: spark, scale: 3, alpha: 0, duration: 100, onComplete: () => spark.destroy() });
+    }
+
     if (type === 'skl' && a.cd <= 0) {
-        a.cd = 10000; // 10s cooldown
-        if (a.type === 'Swordman' && d < 100) t.hp -= 15;
-        if (a.type === 'Gunman') { t.hp -= 20; } // Instant snipe for logic
-        if (a.type === 'Bomber') { a.hp -= 5; if(d < 120) t.hp -= 15; }
-        if (a.type === 'Digger') { a.alpha = 0.5; setTimeout(()=>a.alpha=1, 3000); }
+        a.cd = 10000;
+        if (a.type === 'Swordman') {
+            if(d < 120) { if(t.shieldHits > 0) t.shieldHits--; else t.hp -= 15; }
+            let s = scene.add.rectangle(a.x + (a.x < t.x ? 50 : -50), a.y, 80, 5, 0x00ffff);
+            scene.tweens.add({ targets: s, alpha: 0, duration: 200, onComplete: () => s.destroy() });
+        }
+        else if (a.type === 'Gunman') {
+            let b = scene.add.rectangle(400, a.y, 800, 2, 0xffff00);
+            scene.tweens.add({ targets: b, alpha: 0, duration: 400, onComplete: () => b.destroy() });
+            if(Math.abs(a.y - t.y) < 40) { if(t.shieldHits > 0) t.shieldHits--; else t.hp -= 20; }
+        }
+        else if (a.type === 'Bomber') {
+            let bo = scene.add.circle(a.x, a.y, 100, 0xff4400, 0.4);
+            scene.tweens.add({ targets: bo, scale: 2, alpha: 0, duration: 300, onComplete: () => bo.destroy() });
+            a.hp -= 5;
+            if(d < 130) { if(t.shieldHits > 0) t.shieldHits--; else t.hp -= 15; }
+        }
+        else if (a.type === 'Digger') {
+            a.alpha = 0.2;
+            scene.time.delayedCall(3000, () => { a.alpha = 1; if(d<70) t.hp -= 10; });
+        }
+        else if (a.type === 'Engineer') {
+            a.shieldHits = 3; // Skill: PROTECT (3 Hits)
+        }
     }
 }
 

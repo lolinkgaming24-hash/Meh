@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Stickman Brawler Pro</title>
+    <title>Stickman Brawler: Block Edition</title>
     <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser-arcade-physics.min.js"></script>
     <style>
         body { margin: 0; background: #000; overflow: hidden; touch-action: none; }
@@ -17,7 +17,7 @@ const config = {
     width: 800,
     height: 450,
     scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
-    input: { activePointers: 5 }, 
+    input: { activePointers: 5 },
     physics: { default: 'arcade', arcade: { gravity: { y: 1200 } } },
     scene: { preload: preload, create: create, update: update }
 };
@@ -29,23 +29,23 @@ let selections = { p1: 'Swordman', p2: 'Swordman' };
 function preload() {}
 
 function create() {
-    this.cameras.main.setBackgroundColor('#1a1a1a');
+    this.cameras.main.setBackgroundColor('#111');
     showMenu.call(this);
 }
 
 function showMenu() {
     this.children.removeAll();
-    this.add.text(400, 100, 'STICKMAN BRAWLER', { fontSize: '42px', color: '#fff', fontStyle: 'bold' }).setOrigin(0.5);
-    createBtn(this, 400, 220, '1 PLAYER (vs CPU)', () => { mode = 1; selectP1.call(this); });
-    createBtn(this, 400, 300, '2 PLAYERS (LOCAL)', () => { mode = 2; selectP1.call(this); });
+    this.add.text(400, 80, 'STICKMAN BRAWLER', { fontSize: '42px', color: '#fff', fontStyle: 'bold' }).setOrigin(0.5);
+    createMenuBtn(this, 400, 200, '1 PLAYER (vs CPU)', () => { mode = 1; selectP1.call(this); });
+    createMenuBtn(this, 400, 280, '2 PLAYERS (LOCAL)', () => { mode = 2; selectP1.call(this); });
 }
 
 function selectP1() {
     this.children.removeAll();
     const classes = ['Swordman', 'Gunman', 'Bomber', 'Digger', 'Engineer'];
-    this.add.text(400, 50, 'PLAYER 1 SELECT', { fontSize: '24px', color: '#0f0' }).setOrigin(0.5);
+    this.add.text(400, 40, 'P1: SELECT CLASS', { fontSize: '24px', color: '#0f0' }).setOrigin(0.5);
     classes.forEach((name, i) => {
-        createBtn(this, 400, 120 + (i * 55), name, () => {
+        createMenuBtn(this, 400, 100 + (i * 50), name, () => {
             selections.p1 = name;
             if (mode === 2) selectP2.call(this);
             else { selections.p2 = classes[Math.floor(Math.random()*5)]; startMatch.call(this); }
@@ -56,9 +56,9 @@ function selectP1() {
 function selectP2() {
     this.children.removeAll();
     const classes = ['Swordman', 'Gunman', 'Bomber', 'Digger', 'Engineer'];
-    this.add.text(400, 50, 'PLAYER 2 SELECT', { fontSize: '24px', color: '#f00' }).setOrigin(0.5);
+    this.add.text(400, 40, 'P2: SELECT CLASS', { fontSize: '24px', color: '#f00' }).setOrigin(0.5);
     classes.forEach((name, i) => {
-        createBtn(this, 400, 120 + (i * 55), name, () => { selections.p2 = name; startMatch.call(this); });
+        createMenuBtn(this, 400, 100 + (i * 50), name, () => { selections.p2 = name; startMatch.call(this); });
     });
 }
 
@@ -73,63 +73,69 @@ function startMatch() {
     this.physics.add.collider([p1, p2], ground);
 
     this.p1Bar = this.add.rectangle(20, 20, 200, 15, 0x00ff00).setOrigin(0);
+    this.p1CD = this.add.rectangle(20, 40, 0, 5, 0xffff00).setOrigin(0);
     this.p2Bar = this.add.rectangle(780, 20, 200, 15, 0xff0000).setOrigin(1, 0);
-    this.p1CD = this.add.rectangle(20, 37, 0, 5, 0xffff00).setOrigin(0);
-    this.p2CD = this.add.rectangle(780, 37, 0, 5, 0xffff00).setOrigin(1, 0);
+    this.p2CD = this.add.rectangle(780, 40, 0, 5, 0xffff00).setOrigin(1, 0);
 
     setupMobileControls.call(this);
+    this.keys = this.input.keyboard.addKeys('W,A,S,D,SPACE,F,UP,LEFT,RIGHT,DOWN,ENTER,P');
 
     let count = 3;
-    let txt = this.add.text(400, 200, '3', { fontSize: '64px' }).setOrigin(0.5);
+    let txt = this.add.text(400, 200, '3', { fontSize: '64px', color: '#fff' }).setOrigin(0.5);
     let timer = setInterval(() => {
         count--;
         txt.setText(count > 0 ? count : 'FIGHT!');
         if(count < 0) { txt.destroy(); gameState = 'PLAYING'; clearInterval(timer); }
     }, 1000);
-
-    this.keys = this.input.keyboard.addKeys('W,A,S,D,SPACE,F,UP,LEFT,RIGHT,ENTER,P');
 }
 
 function createChar(scene, x, y, color, type, id) {
-    let c = scene.add.container(x, y);
-    let head = scene.add.circle(0, -15, 12, color);
-    let body = scene.add.rectangle(0, 10, 4, 30, color);
+    let container = scene.add.container(x, y);
+    let head = scene.add.circle(0, -25, 14, color);
+    let body = scene.add.rectangle(0, 5, 6, 35, color);
     
     let weapon;
-    if(type === 'Swordman') weapon = scene.add.rectangle(15, 0, 25, 4, 0xaaaaaa);
-    else if(type === 'Gunman') weapon = scene.add.rectangle(15, 0, 20, 8, 0x555555);
-    else if(type === 'Bomber') weapon = scene.add.circle(15, 0, 8, 0x333333);
-    else if(type === 'Digger') weapon = scene.add.rectangle(15, 0, 20, 4, 0x8b4513);
-    else weapon = scene.add.circle(0, 0, 40, 0x00ccff, 0).setStrokeStyle(2, 0x00ffff); // Engineer
+    if(type === 'Swordman') weapon = scene.add.rectangle(20, 0, 35, 6, 0xccc).setOrigin(0, 0.5);
+    else if(type === 'Gunman') weapon = scene.add.rectangle(20, 0, 25, 10, 0x444).setOrigin(0, 0.5);
+    else if(type === 'Bomber') weapon = scene.add.circle(20, 0, 10, 0x222);
+    else if(type === 'Digger') weapon = scene.add.rectangle(20, 0, 25, 5, 0x8b4513).setOrigin(0, 0.5);
+    else weapon = scene.add.rectangle(20, 0, 15, 15, 0xffaa00).setOrigin(0, 0.5);
 
-    c.add([head, body, weapon]);
-    scene.physics.add.existing(c);
-    c.body.setCollideWorldBounds(true).setSize(30, 50);
+    let shield = scene.add.circle(0, 0, 45, 0x00ffff, 0.2).setStrokeStyle(3, 0x00ffff).setVisible(false);
     
-    c.hp = 100; c.type = type; c.id = id; c.cd = 0;
-    c.shieldHits = 0;
-    return c;
+    container.add([head, body, weapon, shield]);
+    scene.physics.add.existing(container);
+    container.body.setCollideWorldBounds(true).setSize(40, 60);
+    
+    container.hp = 100; container.type = type; container.id = id;
+    container.skillCD = 0; container.atkCD = 0; container.shieldHits = 0;
+    container.isBlocking = false;
+    return container;
 }
 
 function setupMobileControls() {
-    drawBtn(this, 50, 400, '←', (v)=>p1.mLeft=v);
-    drawBtn(this, 120, 400, '→', (v)=>p1.mRight=v);
-    drawBtn(this, 85, 340, '↑', (v)=>{ if(v && p1.body.touching.down) p1.body.setVelocityY(-550) });
-    drawBtn(this, 200, 400, 'ATK', (v)=>{ if(v) combat(p1, p2, 'atk') });
-    drawBtn(this, 270, 400, 'SKL', (v)=>{ if(v) combat(p1, p2, 'skl') });
+    // P1
+    drawBtn(this, 60, 380, '←', (v)=>p1.mLeft=v);
+    drawBtn(this, 140, 380, '→', (v)=>p1.mRight=v);
+    drawBtn(this, 100, 310, '↑', (v)=>{ if(v && p1.body.touching.down) p1.body.setVelocityY(-550)});
+    drawBtn(this, 100, 420, 'BLK', (v)=>p1.isBlocking=v); // Block Button
+    drawBtn(this, 240, 380, 'ATK', (v)=>{ if(v) handleCombat(p1, p2, 'atk') });
+    drawBtn(this, 320, 380, 'SKL', (v)=>{ if(v) handleCombat(p1, p2, 'skl') });
 
+    // P2
     if(mode === 2) {
-        drawBtn(this, 750, 400, '→', (v)=>p2.mRight=v);
-        drawBtn(this, 680, 400, '←', (v)=>p2.mLeft=v);
-        drawBtn(this, 715, 340, '↑', (v)=>{ if(v && p2.body.touching.down) p2.body.setVelocityY(-550) });
-        drawBtn(this, 600, 400, 'ATK', (v)=>{ if(v) combat(p2, p1, 'atk') });
-        drawBtn(this, 530, 400, 'SKL', (v)=>{ if(v) combat(p2, p1, 'skl') });
+        drawBtn(this, 740, 380, '→', (v)=>p2.mRight=v);
+        drawBtn(this, 660, 380, '←', (v)=>p2.mLeft=v);
+        drawBtn(this, 700, 310, '↑', (v)=>{ if(v && p2.body.touching.down) p2.body.setVelocityY(-550)});
+        drawBtn(this, 700, 420, 'BLK', (v)=>p2.isBlocking=v);
+        drawBtn(this, 560, 380, 'ATK', (v)=>{ if(v) handleCombat(p2, p1, 'atk') });
+        drawBtn(this, 480, 380, 'SKL', (v)=>{ if(v) handleCombat(p2, p1, 'skl') });
     }
 }
 
 function drawBtn(scene, x, y, label, callback) {
-    let b = scene.add.circle(x, y, 30, 0xffffff, 0.2).setInteractive().setDepth(100);
-    scene.add.text(x, y, label).setOrigin(0.5).setDepth(101);
+    let b = scene.add.circle(x, y, 32, 0xffffff, 0.15).setInteractive().setDepth(100);
+    scene.add.text(x, y, label, {fontSize: '14px'}).setOrigin(0.5).setDepth(101);
     b.on('pointerdown', () => callback(true));
     b.on('pointerup', () => callback(false));
     b.on('pointerout', () => callback(false));
@@ -138,90 +144,92 @@ function drawBtn(scene, x, y, label, callback) {
 function update(time, delta) {
     if (gameState !== 'PLAYING') return;
 
-    handleInput(p1, this.keys.A, this.keys.D, this.keys.W, this.keys.SPACE, this.keys.F);
-    
+    // P1 Move Logic
+    p1.isBlocking = this.keys.S.isDown || p1.isBlocking; // Mobile logic handled in drawBtn
+    processMove(p1, this.keys.A, this.keys.D);
+
+    // P2 Move / AI Logic
     if(mode === 2) {
-        handleInput(p2, this.keys.LEFT, this.keys.RIGHT, this.keys.UP, this.keys.ENTER, this.keys.P);
+        p2.isBlocking = this.keys.DOWN.isDown || p2.isBlocking;
+        processMove(p2, this.keys.LEFT, this.keys.RIGHT);
     } else {
-        handleAI(p2, p1);
+        processAI(p2, p1);
     }
 
-    // Dynamic Cooldown / HP updates
-    p1.cd = Math.max(0, p1.cd - delta);
-    p2.cd = Math.max(0, p2.cd - delta);
-    this.p1CD.width = (p1.cd / 10000) * 200;
-    this.p2CD.width = (p2.cd / 10000) * 200;
+    // Update Visuals
+    [p1, p2].forEach(p => {
+        p.skillCD = Math.max(0, p.skillCD - delta);
+        p.atkCD = Math.max(0, p.atkCD - delta);
+        p.list[0].tint = p.isBlocking ? 0x00aaff : 0xffffff; // Head tint when blocking
+        p.list[2].alpha = p.atkCD > 0 ? 0.3 : 1;
+    });
+
+    this.p1CD.width = (p1.skillCD / 10000) * 200;
+    this.p2CD.width = (p2.skillCD / 10000) * 200;
     this.p1Bar.width = p1.hp * 2;
     this.p2Bar.width = p2.hp * 2;
 
     if(p1.hp <= 0 || p2.hp <= 0) endGame(this, p1.hp <= 0 ? "P2" : "P1");
 }
 
-function handleInput(p, leftK, rightK, upK, atkK, sklK) {
-    if (leftK.isDown || p.mLeft) { p.body.setVelocityX(-220); p.list[2].x = -15; }
-    else if (rightK.isDown || p.mRight) { p.body.setVelocityX(220); p.list[2].x = 15; }
+function processMove(p, l, r) {
+    let speed = p.isBlocking ? 100 : 200;
+    if (l.isDown || p.mLeft) { p.body.setVelocityX(-speed); p.list[2].x = -20; p.list[2].scaleX = -1; }
+    else if (r.isDown || p.mRight) { p.body.setVelocityX(speed); p.list[2].x = 20; p.list[2].scaleX = 1; }
     else p.body.setVelocityX(0);
-
-    if (Phaser.Input.Keyboard.JustDown(upK) && p.body.touching.down) p.body.setVelocityY(-550);
-    if (Phaser.Input.Keyboard.JustDown(atkK)) combat(p, (p.id === 1 ? p2 : p1), 'atk');
-    if (Phaser.Input.Keyboard.JustDown(sklK)) combat(p, (p.id === 1 ? p2 : p1), 'skl');
 }
 
-function handleAI(cpu, target) {
-    let dist = cpu.x - target.x;
-    
-    // Follow target
-    if (Math.abs(dist) > 75) cpu.body.setVelocityX(dist > 0 ? -150 : 150);
+function processAI(cpu, target) {
+    let d = cpu.x - target.x;
+    cpu.isBlocking = (Math.abs(d) < 90 && Math.random() > 0.8); // AI Block logic
+
+    if (Math.abs(d) > 80) cpu.body.setVelocityX(d > 0 ? -140 : 140);
     else {
         cpu.body.setVelocityX(0);
-        // AI Attack only if in range
-        if (Math.random() > 0.96) combat(cpu, target, 'atk');
-        if (cpu.cd <= 0 && Math.random() > 0.98) combat(cpu, target, 'skl');
-    }
-
-    // AI Dodge/Jump
-    if (target.body.velocity.x !== 0 && Math.abs(dist) < 100 && Math.random() > 0.99 && cpu.body.touching.down) {
-        cpu.body.setVelocityY(-550); // Jump dodge
+        if(!cpu.isBlocking && cpu.atkCD <= 0 && Math.random() > 0.95) handleCombat(cpu, target, 'atk');
     }
 }
 
-function combat(a, t, type) {
-    let d = Phaser.Math.Distance.Between(a.x, a.y, t.x, t.y);
+function handleCombat(a, t, type) {
+    if (a.isBlocking) return; // Can't attack while blocking
+    let dist = Phaser.Math.Distance.Between(a.x, a.y, t.x, t.y);
     let scene = a.scene;
 
-    // Animation: Weapon swing
-    scene.tweens.add({ targets: a.list[2], angle: (a.x < t.x ? 90 : -90), duration: 100, yoyo: true });
-
-    if (type === 'atk') {
-        if (d < 70) { // Range check
-            if (t.shieldHits > 0) t.shieldHits--;
-            else t.hp -= 5;
-            spawnSpark(scene, t.x, t.y);
+    if(type === 'atk' && a.atkCD <= 0) {
+        a.atkCD = 500;
+        scene.tweens.add({ targets: a.list[2], angle: 90, duration: 100, yoyo: true });
+        if(dist < 80) {
+            let dmg = t.isBlocking ? 1 : 5; // Damage reduction
+            if(t.shieldHits > 0) t.shieldHits--; else t.hp -= dmg;
+            spawnFX(scene, t.x, t.y, t.isBlocking ? 0x00aaff : 0xffffff);
         }
-    } else if (type === 'skl' && a.cd <= 0) {
-        a.cd = 10000;
-        // Range checks per skill
-        if (a.type === 'Swordman' && d < 120) { t.hp -= 15; }
-        else if (a.type === 'Gunman' && Math.abs(a.y - t.y) < 40) { t.hp -= 20; }
-        else if (a.type === 'Bomber' && d < 150) { a.hp -= 5; t.hp -= 18; }
-        else if (a.type === 'Digger') { a.alpha = 0.3; scene.time.delayedCall(3000, () => { a.alpha = 1; if(d < 80) t.hp -= 10; }); }
-        else if (a.type === 'Engineer') { a.shieldHits = 3; a.list[2].alpha = 0.5; }
+    }
+
+    if(type === 'skl' && a.skillCD <= 0) {
+        a.skillCD = 10000;
+        if(a.type === 'Engineer') a.shieldHits = 3;
+        else if (dist < 150) {
+            let dmg = t.isBlocking ? 3 : 15;
+            if(t.shieldHits > 0) t.shieldHits--; else t.hp -= dmg;
+            spawnFX(scene, a.x, a.y, 0xffff00, 100);
+        }
     }
 }
 
-function spawnSpark(scene, x, y) {
-    let s = scene.add.circle(x, y, 5, 0xffffff);
-    scene.tweens.add({ targets: s, scale: 2, alpha: 0, duration: 150, onComplete: () => s.destroy() });
+function spawnFX(scene, x, y, color, size=10) {
+    let s = scene.add.circle(x, y, size, color);
+    scene.tweens.add({ targets: s, alpha: 0, scale: 2, duration: 200, onComplete: ()=>s.destroy() });
 }
 
 function endGame(scene, winner) {
-    scene.add.text(400, 200, winner + " WINS!", { fontSize: '64px' }).setOrigin(0.5);
-    gameState = 'OVER';
-    setTimeout(() => location.reload(), 3000);
+    scene.add.text(400, 200, winner + " WINS!", {fontSize: '60px', color: '#fff'}).setOrigin(0.5);
+    gameState = 'END';
+    setTimeout(()=>location.reload(), 3000);
 }
 
-function createBtn(scene, x, y, txt, cb) {
-    return scene.add.text(x, y, txt, { backgroundColor: '#333', padding: 10 }).setOrigin(0.5).setInteractive().on('pointerdown', cb);
+function createMenuBtn(scene, x, y, txt, cb) {
+    return scene.add.text(x, y, txt, { backgroundColor: '#222', padding: 10, color: '#fff' })
+        .setOrigin(0.5).setInteractive().on('pointerdown', cb);
 }
 </script>
 </body>

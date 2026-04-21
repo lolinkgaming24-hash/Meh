@@ -96,7 +96,7 @@ function createChar(scene, x, y, color, type, id) {
     c.add([scene.add.circle(0, -15, 12, color), scene.add.rectangle(0, 10, 4, 30, color)]);
     scene.physics.add.existing(c);
     c.body.setCollideWorldBounds(true).setSize(30, 50);
-    c.hp = 100; c.type = type; c.id = id; c.skillCD = 0;
+    c.hp = 100; c.type = type; c.id = id; c.isBlocking = false;
     return c;
 }
 
@@ -104,16 +104,22 @@ function setupMobileControls() {
     const viewW = 800;
     const viewH = 450;
 
+    // P1 CONTROLS (Left side)
     drawButton(this, 60, viewH - 60, '←', () => p1.mLeft = true, () => p1.mLeft = false);
     drawButton(this, 140, viewH - 60, '→', () => p1.mRight = true, () => p1.mRight = false);
     drawButton(this, 100, viewH - 130, '↑', () => { if(p1.body.touching.down) p1.body.setVelocityY(-500) });
+    drawButton(this, 220, viewH - 60, 'ATK', () => combat(p1, p2, 'atk'));
+    drawButton(this, 300, viewH - 60, 'SKL', () => combat(p1, p2, 'skl'));
+    drawButton(this, 260, viewH - 130, 'BLK', () => p1.isBlocking = true, () => p1.isBlocking = false);
 
-    drawButton(this, viewW - 140, viewH - 60, 'ATK', () => combat(p1, p2, 'atk'));
-    drawButton(this, viewW - 60, viewH - 60, 'SKL', () => combat(p1, p2, 'skl'));
-    
+    // P2 CONTROLS (Right side) - Only if 2 Player mode
     if(mode === 2) {
-        drawButton(this, viewW - 140, 100, 'P2 ←', () => p2.mLeft = true, () => p2.mLeft = false);
-        drawButton(this, viewW - 60, 100, 'P2 →', () => p2.mRight = true, () => p2.mRight = false);
+        drawButton(this, viewW - 140, viewH - 60, '←', () => p2.mLeft = true, () => p2.mLeft = false);
+        drawButton(this, viewW - 60, viewH - 60, '→', () => p2.mRight = true, () => p2.mRight = false);
+        drawButton(this, viewW - 100, viewH - 130, '↑', () => { if(p2.body.touching.down) p2.body.setVelocityY(-500) });
+        drawButton(this, viewW - 220, viewH - 60, 'ATK', () => combat(p2, p1, 'atk'));
+        drawButton(this, viewW - 300, viewH - 60, 'SKL', () => combat(p2, p1, 'skl'));
+        drawButton(this, viewW - 260, viewH - 130, 'BLK', () => p2.isBlocking = true, () => p2.isBlocking = false);
     }
 }
 
@@ -130,17 +136,24 @@ function drawButton(scene, x, y, label, downFn, upFn) {
 function update(time, delta) {
     if (gameState !== 'PLAYING') return;
 
-    if (this.keys.A.isDown || p1.mLeft) p1.body.setVelocityX(-200);
-    else if (this.keys.D.isDown || p1.mRight) p1.body.setVelocityX(200);
-    else p1.body.setVelocityX(0);
-    if (Phaser.Input.Keyboard.JustDown(this.keys.SPACE)) combat(p1, p2, 'atk');
+    // Movement P1
+    if (!p1.isBlocking) {
+        if (this.keys.A.isDown || p1.mLeft) p1.body.setVelocityX(-200);
+        else if (this.keys.D.isDown || p1.mRight) p1.body.setVelocityX(200);
+        else p1.body.setVelocityX(0);
+    } else { p1.body.setVelocityX(0); }
 
+    // Movement P2 (AI or Player)
     if (mode === 1) {
         let d = p2.x - p1.x;
         let ideal = p2.type === 'Gunman' ? 250 : 60;
         if (Math.abs(d) > ideal) p2.body.setVelocityX(d > 0 ? -120 : 120);
         else { p2.body.setVelocityX(0); if(Math.random() > 0.98) combat(p2, p1, 'atk'); }
-    }
+    } else if (!p2.isBlocking) {
+        if (p2.mLeft) p2.body.setVelocityX(-200);
+        else if (p2.mRight) p2.body.setVelocityX(200);
+        else p2.body.setVelocityX(0);
+    } else { p2.body.setVelocityX(0); }
 
     this.p1Bar.width = p1.hp * 2;
     this.p2Bar.width = p2.hp * 2;
@@ -151,29 +164,26 @@ function update(time, delta) {
 }
 
 function combat(a, t, type) {
+    if (a.isBlocking) return; // Cannot attack while blocking
+    if (t.isBlocking) return; // Damage is 0 if target is blocking
+
     let dist = Phaser.Math.Distance.Between(a.x, a.y, t.x, t.y);
     
-    // GUNMAN LOGIC: Range is 400 (half screen)
     if (a.type === 'Gunman') {
         let range = 400;
-        // Visual Bullet Effect
         let bullet = a.scene.add.rectangle(a.x, a.y, 15, 3, 0xffff00);
         let direction = t.x > a.x ? 1 : -1;
         a.scene.tweens.add({
             targets: bullet,
             x: a.x + (range * direction),
-            alpha: 0,
-            duration: 300,
-            onComplete: () => bullet.destroy()
+            alpha: 0, duration: 300, onComplete: () => bullet.destroy()
         });
 
-        // Damage check
         if (dist < range) {
             if (type === 'atk') t.hp -= 5;
             if (type === 'skl') { t.hp -= 15; a.body.setVelocityY(-200); }
         }
     } else {
-        // MELEE LOGIC (Original)
         if (type === 'atk' && dist < 60) t.hp -= 5;
         if (type === 'skl' && dist < 100) { t.hp -= 15; a.body.setVelocityY(-200); }
     }

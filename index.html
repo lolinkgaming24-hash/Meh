@@ -3,11 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Stickman Brawler: Eternal Clash</title>
+    <title>Stickman Brawler: Hidden Legends</title>
     <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser-arcade-physics.min.js"></script>
     <style>
-        body { margin: 0; background: #000; overflow: hidden; touch-action: none; font-family: 'Courier New', Courier, monospace; }
-        canvas { display: block; margin: 0 auto; border: 2px solid #333; }
+        body { margin: 0; background: #000; overflow: hidden; touch-action: none; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        canvas { display: block; margin: 0 auto; }
     </style>
 </head>
 <body>
@@ -17,267 +17,224 @@ const config = {
     width: 850,
     height: 480,
     scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
-    input: { activePointers: 10 },
-    physics: { default: 'arcade', arcade: { gravity: { y: 1300 }, debug: false } },
+    physics: { default: 'arcade', arcade: { gravity: { y: 1300 } } },
     scene: { preload: preload, create: create, update: update }
 };
 
 const game = new Phaser.Game(config);
-
-// Global Variables
-let p1, p2, projectiles, timerText, matchTimer, gameState = 'MENU', mode = 1;
-let selections = { p1: 'Swordman', p2: 'Swordman' };
+let p1, p2, projectiles, gameState = 'MENU', mode = 1, matchTimer = 90, timerDisplay;
+let selections = { p1: null, p2: null };
 const CLASSES = ['Swordman', 'Wizard', 'Bomber', 'Digger', 'Engineer', 'Freezer'];
-const HP_MAP = { 
-    Swordman: 120, Wizard: 80, Bomber: 100, Digger: 90, 
-    Engineer: 110, Freezer: 100, Ghost: 150, Reaper: 130 
-};
+const HP_MAP = { Swordman:120, Wizard:80, Bomber:100, Digger:90, Engineer:110, Freezer:100, Ghost:150, Reaper:130 };
 
 function preload() {}
 
 function create() {
-    this.cameras.main.setBackgroundColor('#050505');
     projectiles = this.physics.add.group();
     showMenu.call(this);
 }
 
-// --- MENU SYSTEM ---
+// --- MENU LOGIC ---
 function showMenu() {
     gameState = 'MENU';
     this.children.removeAll();
-    this.add.text(425, 100, 'STICKMAN BRAWLER', { fontSize: '52px', color: '#fff', fontStyle: 'bold' }).setOrigin(0.5);
-    
-    createMenuBtn(this, 425, 220, '1 PLAYER (vs CPU)', () => { mode = 1; selectP1.call(this); });
-    createMenuBtn(this, 425, 310, '2 PLAYERS (LOCAL)', () => { mode = 2; selectP1.call(this); });
+    this.add.text(425, 80, 'STICKMAN BRAWLER', { fontSize: '50px', color: '#fff', fontStyle: 'bold' }).setOrigin(0.5);
+    createBtn(this, 425, 200, '1 PLAYER (vs CPU)', () => { mode = 1; selectP1.call(this); });
+    createBtn(this, 425, 280, '2 PLAYERS (LOCAL)', () => { mode = 2; selectP1.call(this); });
 }
 
 function selectP1() {
     this.children.removeAll();
-    this.add.text(425, 40, 'PLAYER 1: CHOOSE YOUR CLASS', { fontSize: '24px', color: '#0f0' }).setOrigin(0.5);
+    this.add.text(425, 40, 'P1: SELECT YOUR FIGHTER', { fontSize: '24px', color: '#0f0' }).setOrigin(0.5);
     CLASSES.forEach((name, i) => {
-        createMenuBtn(this, 425, 90 + (i * 45), name, () => { selections.p1 = name; (mode === 2) ? selectP2.call(this) : (selections.p2 = 'Random', startMatch.call(this)); });
+        createBtn(this, 425, 85 + (i * 42), name, () => { selections.p1 = name; moveNext.call(this); });
     });
-    createMenuBtn(this, 425, 370, '?? RANDOM ??', () => { selections.p1 = 'Random'; (mode === 2) ? selectP2.call(this) : (selections.p2 = 'Random', startMatch.call(this)); }).setStyle({ fill: '#ffff00' });
+    // EXPLICIT RANDOM BUTTON
+    createBtn(this, 425, 360, '?? RANDOM ??', () => { selections.p1 = 'Random'; moveNext.call(this); }, '#444', '#ff0');
+}
+
+function moveNext() {
+    if (mode === 2) selectP2.call(this);
+    else { selections.p2 = 'Random'; startMatch.call(this); }
 }
 
 function selectP2() {
     this.children.removeAll();
-    this.add.text(425, 40, 'PLAYER 2: CHOOSE YOUR CLASS', { fontSize: '24px', color: '#f00' }).setOrigin(0.5);
+    this.add.text(425, 40, 'P2: SELECT YOUR FIGHTER', { fontSize: '24px', color: '#f00' }).setOrigin(0.5);
     CLASSES.forEach((name, i) => {
-        createMenuBtn(this, 425, 90 + (i * 45), name, () => { selections.p2 = name; startMatch.call(this); });
+        createBtn(this, 425, 85 + (i * 42), name, () => { selections.p2 = name; startMatch.call(this); });
     });
-    createMenuBtn(this, 425, 370, '?? RANDOM ??', () => { selections.p2 = 'Random'; startMatch.call(this); }).setStyle({ fill: '#ffff00' });
+    createBtn(this, 425, 360, '?? RANDOM ??', () => { selections.p2 = 'Random'; startMatch.call(this); }, '#444', '#ff0');
 }
 
-function getRandomChar() {
-    let roll = Math.random();
-    if (roll < 0.12) return 'Ghost';
-    if (roll < 0.24) return 'Reaper';
+function getRandomRoll() {
+    let r = Math.random();
+    if (r < 0.12) return 'Ghost';
+    if (r < 0.24) return 'Reaper';
     return CLASSES[Math.floor(Math.random() * CLASSES.length)];
 }
 
-// --- CORE GAMEPLAY ---
+// --- GAMEPLAY ---
 function startMatch() {
     this.children.removeAll();
     projectiles.clear(true, true);
     matchTimer = 90;
 
-    let char1 = (selections.p1 === 'Random') ? getRandomChar() : selections.p1;
-    let char2 = (selections.p2 === 'Random') ? getRandomChar() : selections.p2;
+    let c1 = (selections.p1 === 'Random') ? getRandomRoll() : selections.p1;
+    let c2 = (selections.p2 === 'Random') ? getRandomRoll() : selections.p2;
 
-    p1 = createChar(this, 200, 300, 0x00ff00, char1, 1);
-    p2 = createChar(this, 650, 300, 0xff0000, char2, 2);
-    
-    let ground = this.add.rectangle(425, 470, 850, 20, 0x222222);
-    this.physics.add.existing(ground, true);
-    this.physics.add.collider([p1, p2], ground);
+    p1 = spawnChar(this, 150, 300, 0x00ff00, c1, 1);
+    p2 = spawnChar(this, 700, 300, 0xff0000, c2, 2);
 
-    // Collision Logic
-    this.physics.add.overlap(projectiles, [p1, p2], (char, proj) => {
-        if (proj.owner !== char.id) {
-            if (proj.isBeam) {
-                dealDamage(proj.launcher, char, char.isBlocking ? 0.15 : 0.6, false);
-            } else if (proj.isFreezeWave) {
-                applyStun(char, 3000, true);
-                proj.destroy();
-            } else {
-                dealDamage(proj.launcher, char, char.isBlocking ? 5 : 18);
-                proj.destroy();
-            }
+    let floor = this.add.rectangle(425, 470, 850, 20, 0x333);
+    this.physics.add.existing(floor, true);
+    this.physics.add.collider([p1, p2], floor);
+
+    // Overlaps
+    this.physics.add.overlap(projectiles, [p1, p2], (target, proj) => {
+        if (proj.owner !== target.id) {
+            if (proj.isBeam) dealDamage(proj.launcher, target, target.isBlocking ? 0.2 : 0.6, false);
+            else if (proj.isFreeze) applyStun(target, 3000, true);
+            else { dealDamage(proj.launcher, target, target.isBlocking ? 6 : 18); proj.destroy(); }
         }
     });
 
-    // BEAM CLASH SYSTEM
+    // CLASH LOGIC
     this.physics.add.overlap(projectiles, projectiles, (b1, b2) => {
         if (b1.isBeam && b2.isBeam && b1.owner !== b2.owner) {
-            // Visualizing the clash point
-            let clashX = (b1.launcher.x + b2.launcher.x) / 2;
-            for(let i=0; i<2; i++) {
-                let s = this.add.circle(clashX + Phaser.Math.Between(-20, 20), b1.y + Phaser.Math.Between(-10, 10), 4, 0xffffff);
-                this.tweens.add({ targets: s, alpha: 0, scale: 2, y: s.y - 40, duration: 200, onComplete: () => s.destroy() });
-            }
+            let cx = (b1.launcher.x + b2.launcher.x)/2;
+            let sp = this.add.circle(cx + Phaser.Math.Between(-10,10), b1.y, 5, 0xffffff);
+            this.tweens.add({ targets: sp, alpha: 0, scale: 2, y: sp.y - 30, duration: 200, onComplete: () => sp.destroy() });
         }
     });
 
-    // UI Elements
     this.p1Bar = this.add.rectangle(20, 25, 200, 20, 0x00ff00).setOrigin(0);
     this.p2Bar = this.add.rectangle(830, 25, 200, 20, 0xff0000).setOrigin(1, 0);
-    this.timerText = this.add.text(425, 75, '01:30', { fontSize: '36px', color: '#fff', fontStyle: 'bold' }).setOrigin(0.5);
+    timerDisplay = this.add.text(425, 30, '01:30', { fontSize: '32px', color: '#fff' }).setOrigin(0.5);
     
-    createMenuBtn(this, 425, 25, 'PAUSE', () => pauseGame.call(this));
-    setupMobileControls.call(this);
+    createBtn(this, 425, 80, 'PAUSE', () => pauseGame.call(this), '#222', '#fff', 12);
+    setupControls.call(this);
     this.keys = this.input.keyboard.addKeys('W,A,S,D,UP,LEFT,RIGHT,DOWN,SHIFT,SPACE');
     gameState = 'PLAYING';
 }
 
-function createChar(scene, x, y, color, type, id) {
+function spawnChar(scene, x, y, col, type, id) {
     let container = scene.add.container(x, y);
-    let skinColor = (type === 'Ghost' || type === 'Reaper') ? 0x999999 : (type === 'Freezer' ? 0x88ccff : color);
+    let skin = (type === 'Ghost' || type === 'Reaper') ? 0x888888 : col;
     
-    // Weapon Customization
-    let weapon = null;
-    if (type === 'Ghost') {
-        weapon = scene.add.circle(0, 0, 0); // No weapon for Ghost
-    } else if (type === 'Reaper') {
-        weapon = scene.add.rectangle(20, 0, 30, 6, 0xffffff).setOrigin(0, 0.5); // White Sword
-    } else if (type === 'Digger') {
+    // Weapon Logic
+    let weapon;
+    if (type === 'Ghost') weapon = scene.add.circle(0,0,0);
+    else if (type === 'Reaper') weapon = scene.add.rectangle(20, 0, 30, 6, 0xffffff).setOrigin(0, 0.5);
+    else if (type === 'Digger') {
         weapon = scene.add.container(20, 0);
         weapon.add([scene.add.rectangle(0,0,30,4,0x664422), scene.add.rectangle(25,-5,10,15,0x888).setAngle(45)]);
     } else if (type === 'Engineer') {
         weapon = scene.add.container(20, 0);
-        weapon.add([scene.add.rectangle(0,0,25,6,0x555555), scene.add.rectangle(25,-3,8,12,0x555555)]);
+        weapon.add([scene.add.rectangle(0,0,25,6,0x555), scene.add.rectangle(25,-3,8,12,0x555)]);
     } else if (type === 'Freezer') {
         weapon = scene.add.container(20, 0);
-        weapon.add([scene.add.rectangle(0,0,30,4,0xffffff), scene.add.circle(30,0,6,0x00ffff)]);
+        weapon.add([scene.add.rectangle(0,0,30,4,0xfff), scene.add.circle(30,0,6,0x00ffff)]);
     } else {
-        weapon = scene.add.rectangle(20, 0, 30, 6, 0xcccccc).setOrigin(0, 0.5);
+        weapon = scene.add.rectangle(20, 0, 30, 6, 0xccc).setOrigin(0, 0.5);
     }
-    
-    container.add([scene.add.circle(0, -25, 15, skinColor), scene.add.rectangle(0, 5, 8, 40, skinColor), weapon]);
+
+    container.add([scene.add.circle(0, -25, 15, skin), scene.add.rectangle(0, 5, 8, 40, skin), weapon]);
     scene.physics.add.existing(container);
     container.body.setCollideWorldBounds(true).setSize(40, 70);
-    
-    // Stats
+
     container.hp = HP_MAP[type]; container.maxHp = HP_MAP[type]; container.type = type; container.id = id;
     container.skillCD = 0; container.atkCD = 0; container.facing = (id === 1 ? 1 : -1);
     container.isStunned = false; container.isChannelling = false; container.shieldHits = 0;
     
-    // Visual Add-ons
-    container.spirit = scene.add.circle(-25, -45, 12, 0x777777, 0.4).setAlpha(0);
-    container.shieldGraphic = scene.add.circle(0, 0, 45, 0x00ffff, 0.2).setAlpha(0);
-    container.iceVisual = scene.add.rectangle(0, -10, 60, 80, 0x00ffff, 0.5).setAlpha(0);
-    container.stunVisual = scene.add.text(0, -60, '💫', { fontSize: '28px' }).setOrigin(0.5).setAlpha(0);
+    container.spirit = scene.add.circle(-25, -45, 12, 0x666666, 0.4).setAlpha(0);
+    container.shield = scene.add.circle(0, 0, 45, 0x00ffff, 0.2).setAlpha(0);
+    container.ice = scene.add.rectangle(0, -10, 60, 80, 0x00ffff, 0.5).setAlpha(0);
+    container.stars = scene.add.text(0, -60, '💫', { fontSize: '24px' }).setOrigin(0.5).setAlpha(0);
     
-    container.add([container.spirit, container.shieldGraphic, container.iceVisual, container.stunVisual]);
+    container.add([container.spirit, container.shield, container.ice, container.stars]);
     return container;
 }
 
 function update(time, delta) {
     if (gameState !== 'PLAYING') return;
 
-    // Timer Logic
-    matchTimer -= delta / 1000;
-    let m = Math.floor(matchTimer / 60), s = Math.floor(matchTimer % 60);
-    this.timerText.setText(`${m}:${s < 10 ? '0' + s : s}`);
-    if (matchTimer <= 0) endGame.call(this, p1.hp >= p2.hp ? "PLAYER 1 (TIME)" : "PLAYER 2 (TIME)");
+    matchTimer -= delta/1000;
+    let mins = Math.floor(matchTimer/60), secs = Math.floor(matchTimer%60);
+    timerDisplay.setText(`${mins}:${secs < 10 ? '0'+secs : secs}`);
+    if (matchTimer <= 0) endGame.call(this, p1.hp >= p2.hp ? "PLAYER 1" : "PLAYER 2");
 
-    // Character State Logic
     [p1, p2].forEach(p => {
         p.skillCD = Math.max(0, p.skillCD - delta);
         p.atkCD = Math.max(0, p.atkCD - delta);
-        p.alpha = p.isInvisible ? 0.2 : 1.0;
-        p.shieldGraphic.setAlpha(p.shieldHits > 0 ? 0.5 : 0);
-        
-        if (p.type === 'Reaper') {
-            let isTransformed = p.hp < (p.maxHp / 2);
-            p.spirit.setAlpha(isTransformed ? 0.7 : 0);
-            if (isTransformed) p.list[2].setTint(0xff00ff); // Purple sword hint
-        }
+        p.alpha = p.isInvisible ? 0.2 : 1;
+        p.shield.setAlpha(p.shieldHits > 0 ? 0.5 : 0);
+        if (p.type === 'Reaper') p.spirit.setAlpha(p.hp < (p.maxHp/2) ? 0.7 : 0);
     });
 
-    // Progress Bars
-    this.p1Bar.width = Math.max(0, p1.hp) * (200 / p1.maxHp);
-    this.p2Bar.width = Math.max(0, p2.hp) * (200 / p2.maxHp);
+    this.p1Bar.width = Math.max(0, p1.hp) * (200/p1.maxHp);
+    this.p2Bar.width = Math.max(0, p2.hp) * (200/p2.maxHp);
 
-    // Movement
     p1.isBlocking = (this.keys.SHIFT.isDown || p1.mBlock);
-    processMove(p1, this.keys.A, this.keys.D, this.keys.W);
-    
+    move(p1, this.keys.A, this.keys.D, this.keys.W);
     if (mode === 2) {
         p2.isBlocking = (this.keys.SPACE.isDown || p2.mBlock);
-        processMove(p2, this.keys.LEFT, this.keys.RIGHT, this.keys.UP);
-    } else {
-        processAI(p2, p1);
-    }
+        move(p2, this.keys.LEFT, this.keys.RIGHT, this.keys.UP);
+    } else runAI(p2, p1);
 
-    // Projectile Movement
     projectiles.getChildren().forEach(proj => {
-        if (proj.isBeam) {
-            proj.x = proj.launcher.x + (proj.launcher.facing * 400);
-            proj.y = proj.launcher.y;
-        } else if (proj.isFireball) {
-            proj.x += proj.moveDir * 12;
-            if (proj.x < -50 || proj.x > 900) proj.destroy();
-        }
+        if (proj.isBeam) { proj.x = proj.launcher.x + (proj.launcher.facing * 400); proj.y = proj.launcher.y; }
+        else if (proj.isBall) { proj.x += proj.moveDir * 12; if(proj.x < -100 || proj.x > 950) proj.destroy(); }
     });
 
     if (p1.hp <= 0 || p2.hp <= 0) endGame.call(this, p1.hp <= 0 ? "PLAYER 2" : "PLAYER 1");
 }
 
-function processMove(p, l, r, u) {
+function move(p, l, r, u) {
     if (p.isStunned || p.isChannelling || p.isBlocking) { p.body.setVelocityX(0); return; }
-    if (l.isDown || p.mLeft) { p.body.setVelocityX(-230); p.facing = -1; p.list[2].scaleX = -1; }
-    else if (r.isDown || p.mRight) { p.body.setVelocityX(230); p.facing = 1; p.list[2].scaleX = 1; }
-    else { p.body.setVelocityX(0); }
-    if ((u.isDown || p.mJump) && p.body.touching.down) p.body.setVelocityY(-620);
+    if (l.isDown || p.mLeft) { p.body.setVelocityX(-240); p.facing = -1; p.list[2].scaleX = -1; }
+    else if (r.isDown || p.mRight) { p.body.setVelocityX(240); p.facing = 1; p.list[2].scaleX = 1; }
+    else p.body.setVelocityX(0);
+    if ((u.isDown || p.mJump) && p.body.touching.down) p.body.setVelocityY(-630);
 }
 
 function handleCombat(a, t, type) {
     if (a.isStunned || a.isBlocking || a.isChannelling || gameState !== 'PLAYING') return;
 
     if (type === 'atk' && a.atkCD <= 0) {
-        a.atkCD = 750;
+        a.atkCD = 800;
         a.scene.tweens.add({ targets: a.list[2], angle: a.facing > 0 ? 90 : -90, duration: 150, yoyo: true });
         if (Phaser.Math.Distance.Between(a.x, a.y, t.x, t.y) < 110) {
-            let baseDmg = 10;
-            if (a.type === 'Reaper') baseDmg = (a.hp < a.maxHp/2) ? 10 : 5;
-            if (a.type === 'Ghost') baseDmg = 14; 
-            if (a.type === 'Freezer') { applyStun(t, 500, true); baseDmg = 6; }
-            if (a.isInvisible) { a.isInvisible = false; applyStun(t, 1400, false); baseDmg = 28; }
-            dealDamage(a, t, t.isBlocking ? baseDmg/4 : baseDmg);
+            let d = 10;
+            if (a.type === 'Reaper') d = (a.hp < a.maxHp/2) ? 10 : 5;
+            else if (a.type === 'Ghost') d = 14;
+            else if (a.type === 'Freezer') { applyStun(t, 500, true); d = 6; }
+            if (a.isInvisible) { a.isInvisible = false; applyStun(t, 1500, false); d = 25; }
+            dealDamage(a, t, t.isBlocking ? d/4 : d);
         }
     }
 
     if (type === 'skl' && a.skillCD <= 0) {
         a.skillCD = (a.type === 'Reaper' && a.hp < a.maxHp/2) ? 20000 : 9000;
-        
         if (a.type === 'Reaper') {
-            if (a.hp >= a.maxHp/2) { 
-                a.hp = Math.min(a.maxHp, a.hp + 12); // Heal
-                let flash = a.scene.add.circle(a.x, a.y, 40, 0x00ff00, 0.5);
-                a.scene.tweens.add({ targets: flash, scale: 2, alpha: 0, duration: 400, onComplete: () => flash.destroy() });
-            } else {
-                fireBeam(a, 0xff00ff); // Pink Beam
-            }
-        } else if (a.type === 'Ghost') {
-            fireBeam(a, 0x00ffff); // Cyan Beam
-        } else if (a.type === 'Wizard') {
-            let f = a.scene.add.circle(a.x, a.y, 20, 0xff6600);
-            a.scene.physics.add.existing(f); f.body.setAllowGravity(false);
-            f.moveDir = a.facing; f.owner = a.id; f.launcher = a; f.isFireball = true; projectiles.add(f);
-        } else if (a.type === 'Freezer') {
-            let wave = a.scene.add.rectangle(a.x + (a.facing * 160), a.y, 320, 80, 0x00ffff, 0.4);
-            a.scene.physics.add.existing(wave); wave.body.setAllowGravity(false);
-            wave.owner = a.id; wave.launcher = a; wave.isFreezeWave = true; projectiles.add(wave);
-            a.scene.time.delayedCall(400, () => wave.destroy());
-        } else if (a.type === 'Digger') {
-            a.isInvisible = true;
-        } else if (a.type === 'Engineer') {
-            a.shieldHits = 3;
+            if (a.hp >= a.maxHp/2) { a.hp = Math.min(a.maxHp, a.hp + 12); }
+            else fireBeam(a, 0xff00ff);
+        } else if (a.type === 'Ghost') fireBeam(a, 0x00ffff);
+        else if (a.type === 'Wizard') {
+            let b = a.scene.add.circle(a.x, a.y, 20, 0xff6600);
+            a.scene.physics.add.existing(b); b.body.setAllowGravity(false);
+            b.moveDir = a.facing; b.owner = a.id; b.launcher = a; b.isBall = true; projectiles.add(b);
+        } else if (a.type === 'Digger') a.isInvisible = true;
+        else if (a.type === 'Engineer') a.shieldHits = 3;
+        else if (a.type === 'Freezer') {
+            let w = a.scene.add.rectangle(a.x + (a.facing * 160), a.y, 320, 80, 0x00ffff, 0.4);
+            a.scene.physics.add.existing(w); w.body.setAllowGravity(false);
+            w.owner = a.id; w.launcher = a; w.isFreeze = true; projectiles.add(w);
+            a.scene.time.delayedCall(400, () => w.destroy());
         } else if (a.type === 'Bomber') {
-            let b = a.scene.add.circle(a.x, a.y, 16, 0x222222);
+            let b = a.scene.add.circle(a.x, a.y, 16, 0x333);
             a.scene.physics.add.existing(b); b.body.setVelocity(a.facing * 480, -450);
-            b.owner = a.id; b.launcher = a; b.isBomb = true; projectiles.add(b);
+            b.owner = a.id; b.launcher = a; projectiles.add(b);
             a.scene.time.delayedCall(1200, () => {
                 if(!b.active) return;
                 let ex = a.scene.add.circle(b.x, b.y, 130, 0xffaa00, 0.6);
@@ -288,51 +245,51 @@ function handleCombat(a, t, type) {
     }
 }
 
-function fireBeam(a, color) {
+function fireBeam(a, col) {
     a.isChannelling = true;
-    let b = a.scene.add.container(a.x + (a.facing * 400), a.y, [
-        a.scene.add.rectangle(0, 0, 800, 120, color, 0.3),
-        a.scene.add.rectangle(0, 0, 800, 40, 0xffffff, 0.8)
+    let b = a.scene.add.container(a.x+(a.facing*400), a.y, [
+        a.scene.add.rectangle(0,0,800,100,col,0.3),
+        a.scene.add.rectangle(0,0,800,35,0xfff,0.8)
     ]);
     a.scene.physics.add.existing(b); b.body.setAllowGravity(false);
     b.owner = a.id; b.launcher = a; b.isBeam = true; projectiles.add(b);
     a.scene.time.delayedCall(2500, () => { b.destroy(); a.isChannelling = false; });
 }
 
-function applyStun(t, dur, isIce) {
+function applyStun(t, dur, ice) {
     if (t.isStunned) return;
     t.isStunned = true;
-    isIce ? t.iceVisual.setAlpha(1) : t.stunVisual.setAlpha(1);
-    t.scene.time.delayedCall(dur, () => { t.isStunned = false; t.iceVisual.setAlpha(0); t.stunVisual.setAlpha(0); });
+    ice ? t.ice.setAlpha(1) : t.stars.setAlpha(1);
+    t.scene.time.delayedCall(dur, () => { t.isStunned = false; t.ice.setAlpha(0); t.stars.setAlpha(0); });
 }
 
-function dealDamage(a, t, d, fx = true) {
+function dealDamage(a, t, d, fx=true) {
     if (t.shieldHits > 0 && d > 1) { t.shieldHits--; return; }
     t.hp -= d;
     if (fx) {
-        let p = a.scene.add.circle(t.x, t.y, 15, 0xffffff, 0.6);
+        let p = a.scene.add.circle(t.x, t.y, 15, 0xfff, 0.6);
         a.scene.tweens.add({ targets: p, alpha: 0, scale: 2, duration: 200, onComplete: () => p.destroy() });
     }
 }
 
 function pauseGame() {
-    if (gameState !== 'PLAYING') return;
     this.physics.pause(); gameState = 'PAUSED';
     let ov = this.add.rectangle(425, 240, 850, 480, 0x000, 0.8).setDepth(1000);
-    let r = createMenuBtn(this, 425, 200, 'RESUME', () => { ov.destroy(); r.destroy(); q.destroy(); this.physics.resume(); gameState = 'PLAYING'; }).setDepth(1001);
-    let q = createMenuBtn(this, 425, 280, 'QUIT TO MENU', () => { this.physics.resume(); showMenu.call(this); }).setDepth(1001);
+    createBtn(this, 425, 200, 'RESUME', () => { ov.destroy(); this.physics.resume(); gameState = 'PLAYING'; showMatchUI(); }, '#111', '#fff', 1001);
+    createBtn(this, 425, 280, 'QUIT', () => { this.physics.resume(); showMenu.call(this); }, '#111', '#fff', 1001);
 }
 
-function setupMobileControls() {
+function showMatchUI() { this.children.each(c => { if(c.type === 'Text' && (c.text === 'RESUME' || c.text === 'QUIT')) c.destroy(); }); }
+
+function setupControls() {
     const d = (x, y, l, cb) => {
-        let b = this.add.circle(x, y, 38, 0xffffff, 0.15).setInteractive().setDepth(500);
+        let b = this.add.circle(x, y, 38, 0xfff, 0.15).setInteractive().setDepth(500);
         this.add.text(x, y, l).setOrigin(0.5).setDepth(501);
         b.on('pointerdown', () => cb(true)); b.on('pointerup', () => cb(false));
     };
     d(70, 410, '←', v => p1.mLeft = v); d(170, 410, '→', v => p1.mRight = v);
     d(120, 320, '↑', v => p1.mJump = v); d(280, 410, 'ATK', v => { if(v) handleCombat(p1, p2, 'atk') });
     d(380, 410, 'SKL', v => { if(v) handleCombat(p1, p2, 'skl') }); d(330, 320, 'BLK', v => p1.mBlock = v);
-    
     if (mode === 2) {
         d(470, 410, 'SKL', v => { if(v) handleCombat(p2, p1, 'skl') }); d(570, 410, 'ATK', v => { if(v) handleCombat(p2, p1, 'atk') });
         d(520, 320, 'BLK', v => p2.mBlock = v); d(680, 410, '←', v => p2.mLeft = v);
@@ -340,24 +297,25 @@ function setupMobileControls() {
     }
 }
 
-function createMenuBtn(s, x, y, t, c) { return s.add.text(x, y, t, { backgroundColor: '#1a1a1a', padding: 12, color: '#fff' }).setOrigin(0.5).setInteractive().on('pointerdown', c); }
-
-function endGame(w) { 
-    gameState = 'END'; this.physics.pause(); 
-    this.add.rectangle(425, 240, 850, 480, 0x000, 0.7);
-    this.add.text(425, 200, w + " WINS!", { fontSize: '60px', color: '#fff' }).setOrigin(0.5);
-    createMenuBtn(this, 425, 310, 'REMATCH', () => startMatch.call(this));
+function createBtn(s, x, y, t, c, bg='#222', fg='#fff', depth=1) { 
+    return s.add.text(x, y, t, { backgroundColor: bg, padding: 12, color: fg }).setOrigin(0.5).setInteractive().on('pointerdown', c).setDepth(depth); 
 }
 
-function processAI(c, t) {
+function endGame(w) { 
+    gameState = 'END'; this.physics.pause();
+    this.add.text(425, 200, w + " WINS!", { fontSize: '60px', color: '#fff' }).setOrigin(0.5);
+    createBtn(this, 425, 300, 'REMATCH', () => startMatch.call(this));
+}
+
+function runAI(c, t) {
     if (c.isChannelling || c.isStunned || c.isBlocking) return;
     let dist = Math.abs(c.x - t.x);
-    if (dist > 160) c.body.setVelocityX(c.x > t.x ? -160 : 160);
+    if (dist > 150) c.body.setVelocityX(c.x > t.x ? -160 : 160);
     else c.body.setVelocityX(0);
     c.facing = c.x > t.x ? -1 : 1;
     if (c.skillCD <= 0 && dist < 300) handleCombat(c, t, 'skl');
     if (c.atkCD <= 0 && dist < 110) handleCombat(c, t, 'atk');
-    if (!c.isJump && t.y < c.y - 50 && c.body.touching.down) c.body.setVelocityY(-600);
+    if (t.y < c.y - 50 && c.body.touching.down) c.body.setVelocityY(-600);
 }
 </script>
 </body>

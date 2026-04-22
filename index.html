@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Stickman Brawler: Wizard Definitive</title>
+    <title>Stickman Brawler: Fixed Edition</title>
     <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser-arcade-physics.min.js"></script>
     <style>
         body { margin: 0; background: #000; overflow: hidden; touch-action: none; }
@@ -24,7 +24,7 @@ const config = {
 
 const game = new Phaser.Game(config);
 let p1, p2, projectiles, gameState = 'MENU', mode = 1;
-let selections = { p1: 'Swordman', p2: 'Swordman' };
+let selections = { p1: 'Wizard', p2: 'Wizard' };
 const CLASSES = ['Swordman', 'Wizard', 'Bomber', 'Digger', 'Engineer'];
 
 function preload() {}
@@ -86,8 +86,8 @@ function startMatch() {
                 dealDamage(proj.launcher, char, 20);
                 char.isStunned = true;
                 this.time.delayedCall(1500, () => char.isStunned = false);
-                let pillar = this.add.rectangle(char.x, 240, 70, 480, 0xff4400, 0.7).setDepth(2);
-                this.tweens.add({ targets: pillar, alpha: 0, scaleX: 2, duration: 800, onComplete: () => pillar.destroy() });
+                let pillar = this.add.rectangle(char.x, 240, 90, 480, 0xff4400, 0.7).setDepth(2);
+                this.tweens.add({ targets: pillar, alpha: 0, scaleX: 2.5, duration: 1000, onComplete: () => pillar.destroy() });
             } else {
                 dealDamage(proj.launcher, char, 8);
             }
@@ -98,13 +98,12 @@ function startMatch() {
     this.p1Bar = this.add.rectangle(20, 25, 200, 20, 0x00ff00).setOrigin(0);
     this.p2Bar = this.add.rectangle(830, 25, 200, 20, 0xff0000).setOrigin(1, 0);
 
-    let pauseBtn = this.add.text(425, 25, '||', { fontSize: '24px', backgroundColor: '#333', padding: 5 })
+    this.add.text(425, 25, '||', { fontSize: '24px', backgroundColor: '#333', padding: 5 })
         .setOrigin(0.5).setInteractive().setDepth(200).on('pointerdown', () => togglePause.call(this));
 
     setupMobileControls.call(this);
     this.keys = this.input.keyboard.addKeys('W,A,S,D,UP,LEFT,RIGHT,DOWN');
     
-    // START COUNTDOWN
     gameState = 'STARTING';
     this.physics.pause();
     let count = 3;
@@ -127,7 +126,7 @@ function togglePause() {
         this.pnl = this.add.container(425, 240).setDepth(300);
         this.pnl.add([this.add.rectangle(0, 0, 300, 200, 0x000, 0.9).setStrokeStyle(2, 0xfff), this.add.text(0, -60, 'PAUSED', {fontSize:'32px'}).setOrigin(0.5)]);
         this.pnl.add(createMenuBtn(this, 0, 0, 'RESUME', () => togglePause.call(this)));
-        this.pnl.add(createMenuBtn(this, 0, 60, 'QUIT', () => location.reload()));
+        this.pnl.add(createMenuBtn(this, 0, 60, 'MAIN MENU', () => location.reload()));
     } else {
         gameState = 'PLAYING'; this.physics.resume(); this.pnl.destroy();
     }
@@ -137,9 +136,12 @@ function createChar(scene, x, y, color, type, id) {
     let container = scene.add.container(x, y);
     let head = scene.add.circle(0, -25, 15, color);
     let body = scene.add.rectangle(0, 5, 8, 40, color);
-    let weapon = (type === 'Wizard') ? scene.add.container(20, 0) : scene.add.rectangle(20, 0, 45, 8, 0xccc).setOrigin(0, 0.5);
+    let weapon;
     if(type === 'Wizard') {
+        weapon = scene.add.container(20, 0);
         weapon.add([scene.add.rectangle(0, 0, 6, 50, 0x5d3a1a).setAngle(45), scene.add.circle(18, -18, 6, 0xffd700)]);
+    } else {
+        weapon = scene.add.rectangle(20, 0, 45, 8, 0xccc).setOrigin(0, 0.5);
     }
     container.add([head, body, weapon]);
     scene.physics.add.existing(container);
@@ -164,13 +166,15 @@ function update(time, delta) {
     projectiles.getChildren().forEach(proj => {
         if(proj.active) {
             proj.body.setAllowGravity(false);
-            proj.y = proj.lockY; // Keep horizontal
-            proj.x += proj.speedX; // Manual movement to bypass gravity bugs
+            proj.y = proj.lockY; 
+            proj.x += proj.moveDir * 3; // Force forward movement
+            if (proj.x < 0 || proj.x > 850) proj.destroy();
         }
     });
 
-    this.p1Bar.width = p1.hp * 2; this.p2Bar.width = p2.hp * 2;
-    if(p1.hp <= 0 || p2.hp <= 0) endGame.call(this, p1.hp <= 0 ? "P2" : "P1");
+    this.p1Bar.width = Math.max(0, p1.hp) * 2;
+    this.p2Bar.width = Math.max(0, p2.hp) * 2;
+    if(p1.hp <= 0 || p2.hp <= 0) endGame.call(this, p1.hp <= 0 ? "PLAYER 2" : "PLAYER 1");
 }
 
 function processMove(p, l, r) {
@@ -183,13 +187,13 @@ function processMove(p, l, r) {
 function processAI(cpu, target) {
     if (cpu.isStunned) return;
     let dist = Math.abs(cpu.x - target.x);
-    let ideal = cpu.type === 'Wizard' ? 280 : 70;
+    let ideal = cpu.type === 'Wizard' ? 300 : 70;
     if (dist > ideal + 20) cpu.body.setVelocityX(cpu.x > target.x ? -160 : 160);
     else cpu.body.setVelocityX(0);
     cpu.facing = cpu.x > target.x ? -1 : 1;
     cpu.list[2].x = cpu.facing * 20; cpu.list[2].scaleX = cpu.facing;
     if (cpu.skillCD <= 0 && dist < 500) handleCombat(cpu, target, 'skl');
-    if (cpu.atkCD <= 0 && dist < 100) handleCombat(cpu, target, 'atk');
+    if (cpu.atkCD <= 0 && dist < 110) handleCombat(cpu, target, 'atk');
 }
 
 function handleCombat(a, t, type) {
@@ -204,19 +208,19 @@ function handleCombat(a, t, type) {
         if(a.type === 'Wizard') {
             let ball = a.scene.add.circle(a.x + (a.facing * 40), a.y, 20, 0xff4400).setDepth(4);
             a.scene.physics.add.existing(ball);
-            ball.speedX = a.facing * 4; // Forward speed
+            ball.moveDir = a.facing;
             ball.lockY = ball.y;
             ball.owner = a.id; ball.launcher = a; ball.isFireball = true;
             projectiles.add(ball);
-            a.scene.time.addEvent({ delay: 50, repeat: 60, callback: () => {
+            a.scene.time.addEvent({ delay: 50, repeat: 100, callback: () => {
                 if(ball.active) {
-                    let p = a.scene.add.circle(ball.x, ball.y, 10, 0xff8800, 0.6);
-                    a.scene.tweens.add({ targets: p, alpha: 0, scale: 0.2, duration: 400, onComplete: ()=>p.destroy() });
+                    let trail = a.scene.add.circle(ball.x, ball.y, 10, 0xff8800, 0.6);
+                    a.scene.tweens.add({ targets: trail, alpha: 0, scale: 0.2, duration: 400, onComplete: ()=>trail.destroy() });
                 }
             }});
         } else {
-            if(Phaser.Math.Distance.Between(a.x, a.y, t.x, t.y) < 150) dealDamage(a, t, 20);
-            spawnFX(a.scene, a.x, a.y, 0xffff00, 60);
+            if(Phaser.Math.Distance.Between(a.x, a.y, t.x, t.y) < 160) dealDamage(a, t, 18);
+            spawnFX(a.scene, a.x, a.y, 0xffff00, 80);
         }
     }
 }
@@ -236,15 +240,14 @@ function endGame(winner) {
 }
 
 function setupMobileControls() {
-    // P1 - LEFT HALF
+    // P1 LEFT
     drawBtn(this, 60, 400, '←', (v)=>p1.mLeft=v);
     drawBtn(this, 160, 400, '→', (v)=>p1.mRight=v);
     drawBtn(this, 110, 310, '↑', (v)=>{ if(v && p1.body.touching.down) p1.body.setVelocityY(-600)});
     drawBtn(this, 260, 410, 'ATK', (v)=>{ if(v) handleCombat(p1, p2, 'atk') });
     drawBtn(this, 350, 410, 'SKL', (v)=>{ if(v) handleCombat(p1, p2, 'skl') });
-
+    // P2 RIGHT
     if(mode === 2) {
-        // P2 - RIGHT HALF
         drawBtn(this, 500, 400, '←', (v)=>p2.mLeft=v);
         drawBtn(this, 600, 400, '→', (v)=>p2.mRight=v);
         drawBtn(this, 550, 310, '↑', (v)=>{ if(v && p2.body.touching.down) p2.body.setVelocityY(-600)});

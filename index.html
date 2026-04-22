@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Stickman Brawler: Fixed On-Hit</title>
+    <title>Stickman Brawler: Fixed Random & Pause</title>
     <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser-arcade-physics.min.js"></script>
     <style>
         body { margin: 0; background: #000; overflow: hidden; touch-action: none; }
@@ -67,6 +67,7 @@ function selectP2() {
 }
 
 function getRandomChar() {
+    // 25% chance for Ghost
     return Math.random() < 0.25 ? 'Ghost' : CLASSES[Math.floor(Math.random() * CLASSES.length)];
 }
 
@@ -74,6 +75,7 @@ function startMatch() {
     this.children.removeAll();
     projectiles.clear(true, true);
     
+    // FORCE RANDOM RE-ROLL ON REMATCH
     let char1 = (selections.p1 === 'Random') ? getRandomChar() : selections.p1;
     let char2 = (selections.p2 === 'Random') ? getRandomChar() : selections.p2;
 
@@ -87,12 +89,10 @@ function startMatch() {
     this.physics.add.overlap(projectiles, [p1, p2], (char, proj) => {
         if (proj.owner !== char.id) {
             let finalDmg = proj.isFireball ? 35 : (proj.isGhostBlast ? 10 : 8);
-            
             if (char.isBlocking) {
                 finalDmg *= 0.3;
                 spawnFX(this, char.x, char.y, 0x00aaff, 30);
             } else {
-                // FIREBALL ON-HIT LOGIC
                 if (proj.isFireball) {
                     char.isStunned = true;
                     this.time.delayedCall(1500, () => char.isStunned = false);
@@ -103,16 +103,30 @@ function startMatch() {
                     this.time.delayedCall(2000, () => char.isStunned = false);
                 }
             }
-            
             dealDamage(proj.launcher, char, finalDmg);
             if (!proj.isGhostBlast) proj.destroy();
         }
     });
 
+    // UI
     this.p1Bar = this.add.rectangle(20, 25, 200, 20, 0x00ff00).setOrigin(0);
     this.p1Skl = this.add.rectangle(20, 48, 200, 8, 0x00ffff).setOrigin(0);
     this.p2Bar = this.add.rectangle(830, 25, 200, 20, 0xff0000).setOrigin(1, 0);
     this.p2Skl = this.add.rectangle(830, 48, 200, 8, 0x00ffff).setOrigin(1, 0);
+
+    // PAUSE BUTTON
+    createMenuBtn(this, 425, 30, 'PAUSE', () => {
+        if (gameState === 'PLAYING') {
+            this.physics.pause();
+            gameState = 'PAUSED';
+            let overlay = this.add.rectangle(425, 240, 850, 480, 0x000, 0.6).setDepth(500);
+            let resume = createMenuBtn(this, 425, 200, 'RESUME', () => {
+                overlay.destroy(); resume.destroy(); exit.destroy();
+                this.physics.resume(); gameState = 'PLAYING';
+            }).setDepth(501);
+            let exit = createMenuBtn(this, 425, 280, 'QUIT TO MENU', () => showMenu.call(this)).setDepth(501);
+        }
+    });
 
     setupMobileControls.call(this);
     this.keys = this.input.keyboard.addKeys('W,A,S,D,UP,LEFT,RIGHT,DOWN,SHIFT,SPACE');
@@ -132,12 +146,10 @@ function startMatch() {
 function createChar(scene, x, y, color, type, id) {
     let container = scene.add.container(x, y);
     let c = (type === 'Ghost') ? 0xaaaaaa : color;
-    let head = scene.add.circle(0, -25, 15, c);
-    let body = scene.add.rectangle(0, 5, 8, 40, c);
     let weapon = (type === 'Wizard') ? scene.add.container(20, 0) : scene.add.rectangle(20, 0, 40, 8, 0xccc).setOrigin(0, 0.5);
     if(type === 'Wizard') weapon.add([scene.add.rectangle(0,0,6,50,0x5d3a1a).setAngle(45), scene.add.circle(18,-18,6,0xffd700)]);
     if(type === 'Ghost') container.setAlpha(0.6);
-    container.add([head, body, weapon]);
+    container.add([scene.add.circle(0, -25, 15, c), scene.add.rectangle(0, 5, 8, 40, c), weapon]);
     scene.physics.add.existing(container);
     container.body.setCollideWorldBounds(true).setSize(40, 70);
     container.hp = 100; container.type = type; container.id = id;
@@ -149,6 +161,7 @@ function createChar(scene, x, y, color, type, id) {
 
 function update(time, delta) {
     if (gameState !== 'PLAYING') return;
+    
     p1.isBlocking = this.keys.SHIFT.isDown || p1.mBlock;
     processMove(p1, this.keys.A, this.keys.D);
     if(mode === 2) { 
@@ -168,7 +181,6 @@ function update(time, delta) {
 
     projectiles.getChildren().forEach(proj => {
         if(proj.active) {
-            proj.body.setAllowGravity(false);
             proj.y = proj.startY; 
             proj.x += proj.moveDir * proj.speed;
             if (proj.x < -100 || proj.x > 950) proj.destroy();
@@ -182,14 +194,15 @@ function update(time, delta) {
 
 function processMove(p, l, r) {
     if (p.isStunned || p.isBlocking) { p.body.setVelocityX(0); return; }
-    if (l?.isDown || p.mLeft) { p.body.setVelocityX(-220); p.list[2].x = -20; p.list[2].scaleX = -1; p.facing = -1; }
-    else if (r?.isDown || p.mRight) { p.body.setVelocityX(220); p.list[2].x = 20; p.list[2].scaleX = 1; p.facing = 1; }
+    if (l?.isDown || p.mLeft) { p.body.setVelocityX(-220); p.list[2].x = -20; p.facing = -1; p.list[2].scaleX = -1; }
+    else if (r?.isDown || p.mRight) { p.body.setVelocityX(220); p.list[2].x = 20; p.facing = 1; p.list[2].scaleX = 1; }
     else p.body.setVelocityX(0);
 }
 
 function handleCombat(a, t, type) {
     if (a.isStunned || a.isBlocking || gameState !== 'PLAYING') return; 
 
+    // FIXED: HARD BLOCK ON SPAM
     if(type === 'atk' && a.atkCD <= 0) {
         a.atkCD = 1500; 
         a.scene.tweens.add({ targets: a.list[2], angle: a.facing > 0 ? 90 : -90, duration: 150, yoyo: true });
@@ -207,9 +220,6 @@ function handleCombat(a, t, type) {
             blast.moveDir = a.facing; blast.startY = a.y; blast.owner = a.id; blast.launcher = a; 
             blast.isGhostBlast = true; blast.speed = 8;
             projectiles.add(blast);
-            a.scene.time.addEvent({ delay: 1000, repeat: 2, callback: () => {
-                if(blast.active && Phaser.Geom.Intersects.RectangleToRectangle(blast.getBounds(), t.getBounds())) dealDamage(a, t, t.isBlocking ? 3 : 10);
-            }});
         } else if(a.type === 'Wizard') {
             let ball = a.scene.add.circle(a.x + (a.facing * 40), a.y, 22, 0xff4400).setDepth(4);
             a.scene.physics.add.existing(ball);

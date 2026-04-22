@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Stickman Brawler</title>
+    <title>Stickman Brawler: Wizard & Ghost Fixed</title>
     <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser-arcade-physics.min.js"></script>
     <style>
         body { margin: 0; background: #000; overflow: hidden; touch-action: none; }
@@ -50,7 +50,7 @@ function selectP1() {
         createMenuBtn(this, 425, 100 + (i * 50), name, () => { selections.p1 = name; handleP1Choice.call(this); });
     });
     createMenuBtn(this, 425, 360, '?? RANDOM ??', () => { 
-        selections.p1 = Math.random() < 0.1 ? 'Ghost' : CLASSES[Math.floor(Math.random()*5)];
+        selections.p1 = Math.random() < 0.1 ? 'Ghost' : CLASSES[Math.floor(Math.random()*CLASSES.length)];
         handleP1Choice.call(this); 
     }).setStyle({fill: '#ffff00'});
 }
@@ -58,7 +58,7 @@ function selectP1() {
 function handleP1Choice() {
     if (mode === 2) selectP2.call(this);
     else { 
-        selections.p2 = Math.random() < 0.1 ? 'Ghost' : CLASSES[Math.floor(Math.random()*5)];
+        selections.p2 = Math.random() < 0.1 ? 'Ghost' : CLASSES[Math.floor(Math.random()*CLASSES.length)];
         startMatch.call(this); 
     }
 }
@@ -70,7 +70,7 @@ function selectP2() {
         createMenuBtn(this, 425, 100 + (i * 50), name, () => { selections.p2 = name; startMatch.call(this); });
     });
     createMenuBtn(this, 425, 360, '?? RANDOM ??', () => { 
-        selections.p2 = Math.random() < 0.1 ? 'Ghost' : CLASSES[Math.floor(Math.random()*5)];
+        selections.p2 = Math.random() < 0.1 ? 'Ghost' : CLASSES[Math.floor(Math.random()*CLASSES.length)];
         startMatch.call(this); 
     }).setStyle({fill: '#ffff00'});
 }
@@ -89,27 +89,31 @@ function startMatch() {
     this.physics.add.overlap(projectiles, [p1, p2], (char, proj) => {
         if (proj.owner !== char.id) {
             let finalDmg = proj.isFireball ? 35 : (proj.isGhostBlast ? 10 : 8);
-            if (char.isBlocking) finalDmg *= 0.3;
-            else if (proj.isFireball) {
-                char.isStunned = true;
-                this.time.delayedCall(1500, () => char.isStunned = false);
-            } else if (proj.isGhostBlast) {
-                char.isStunned = true;
-                this.time.delayedCall(2000, () => char.isStunned = false);
+            if (char.isBlocking) {
+                finalDmg *= 0.3;
+                spawnFX(this, char.x, char.y, 0x00aaff, 30);
+            } else {
+                if (proj.isFireball) {
+                    char.isStunned = true;
+                    this.time.delayedCall(1500, () => char.isStunned = false);
+                    let pillar = this.add.rectangle(char.x, 240, 100, 480, 0xff6600, 0.8).setDepth(2);
+                    this.tweens.add({ targets: pillar, alpha: 0, scaleX: 3, duration: 1000, onComplete: () => pillar.destroy() });
+                } else if (proj.isGhostBlast) {
+                    char.isStunned = true;
+                    this.time.delayedCall(2000, () => char.isStunned = false);
+                }
             }
             dealDamage(proj.launcher, char, finalDmg);
             if (!proj.isGhostBlast) proj.destroy();
         }
     });
 
-    // UI Bars
     this.p1Bar = this.add.rectangle(20, 25, 200, 20, 0x00ff00).setOrigin(0);
     this.p1Skl = this.add.rectangle(20, 48, 200, 8, 0x00ffff).setOrigin(0);
     this.p2Bar = this.add.rectangle(830, 25, 200, 20, 0xff0000).setOrigin(1, 0);
     this.p2Skl = this.add.rectangle(830, 48, 200, 8, 0x00ffff).setOrigin(1, 0);
 
-    this.add.text(425, 25, '||', { fontSize: '24px', backgroundColor: '#333', padding: 5 })
-        .setOrigin(0.5).setInteractive().setDepth(200).on('pointerdown', () => togglePause.call(this));
+    this.add.text(425, 25, '||', { fontSize: '24px', backgroundColor: '#333', padding: 5 }).setOrigin(0.5).setInteractive().setDepth(200).on('pointerdown', () => togglePause.call(this));
 
     setupMobileControls.call(this);
     this.keys = this.input.keyboard.addKeys('W,A,S,D,UP,LEFT,RIGHT,DOWN,SHIFT,SPACE');
@@ -128,9 +132,8 @@ function startMatch() {
 
 function createChar(scene, x, y, color, type, id) {
     let container = scene.add.container(x, y);
-    let charColor = (type === 'Ghost') ? 0xaaaaaa : color;
-    let head = scene.add.circle(0, -25, 15, charColor);
-    let body = scene.add.rectangle(0, 5, 8, 40, charColor);
+    let head = scene.add.circle(0, -25, 15, (type === 'Ghost') ? 0xaaaaaa : color);
+    let body = scene.add.rectangle(0, 5, 8, 40, (type === 'Ghost') ? 0xaaaaaa : color);
     let weapon = (type === 'Wizard') ? scene.add.container(20, 0) : scene.add.rectangle(20, 0, 40, 8, 0xccc).setOrigin(0, 0.5);
     if(type === 'Wizard') weapon.add([scene.add.rectangle(0,0,6,50,0x5d3a1a).setAngle(45), scene.add.circle(18,-18,6,0xffd700)]);
     if(type === 'Ghost') { weapon.setAlpha(0.5); container.setAlpha(0.6); }
@@ -156,13 +159,14 @@ function update(time, delta) {
         p.list[0].tint = p.isBlocking ? 0x00aaff : (p.isStunned ? 0xffaa00 : 0xffffff);
     });
 
-    // Update Skill Bars
     this.p1Skl.width = (1 - (p1.skillCD / p1.maxSkl)) * 200;
     this.p2Skl.width = (1 - (p2.skillCD / p2.maxSkl)) * 200;
 
     projectiles.getChildren().forEach(proj => {
         if(proj.active) {
-            proj.x += proj.moveDir * (proj.isGhostBlast ? 8 : 4.5);
+            proj.body.setAllowGravity(false);
+            proj.y = proj.lockY; // Horizontal Lock
+            proj.x += proj.moveDir * (proj.isGhostBlast ? 8 : 5);
             if (proj.x < -100 || proj.x > 950) proj.destroy();
         }
     });
@@ -181,31 +185,37 @@ function processMove(p, l, r) {
 
 function handleCombat(a, t, type) {
     if (a.isStunned || a.isBlocking || gameState !== 'PLAYING') return; 
-    if(type === 'atk' && a.atkCD <= 0) {
-        a.atkCD = 600;
+    if(type === 'atk') {
         a.scene.tweens.add({ targets: a.list[2], angle: a.facing > 0 ? 90 : -90, duration: 100, yoyo: true });
         if(Phaser.Math.Distance.Between(a.x, a.y, t.x, t.y) < 100) {
             dealDamage(a, t, t.isBlocking ? 4 : 10);
-            if(a.type === 'Ghost') t.body.setVelocityX(a.facing * 500); // Knockback punch
+            if(a.type === 'Ghost') t.body.setVelocityX(a.facing * 600); 
         }
     }
     if(type === 'skl' && a.skillCD <= 0) {
         a.skillCD = a.maxSkl;
         if(a.type === 'Ghost') {
-            let blast = a.scene.add.rectangle(a.x, a.y, 100, 20, 0x00ffff).setDepth(4);
+            let blast = a.scene.add.rectangle(a.x, a.y, 80, 25, 0x00ffff, 0.7).setDepth(4);
             a.scene.physics.add.existing(blast);
-            blast.moveDir = a.facing; blast.owner = a.id; blast.launcher = a; blast.isGhostBlast = true;
+            blast.moveDir = a.facing; blast.lockY = a.y; blast.owner = a.id; blast.launcher = a; blast.isGhostBlast = true;
             projectiles.add(blast);
-            // Continuous damage logic
             a.scene.time.addEvent({ delay: 1000, repeat: 2, callback: () => {
-                if(Phaser.Math.Bounds.Overlaps(blast.getBounds(), t.getBounds())) dealDamage(a, t, t.isBlocking ? 3 : 10);
+                if(blast.active && Phaser.Geom.Intersects.RectangleToRectangle(blast.getBounds(), t.getBounds())) dealDamage(a, t, t.isBlocking ? 3 : 10);
             }});
-            a.scene.time.delayedCall(3000, () => blast.destroy());
         } else if(a.type === 'Wizard') {
             let ball = a.scene.add.circle(a.x + (a.facing * 40), a.y, 22, 0xff4400).setDepth(4);
             a.scene.physics.add.existing(ball);
-            ball.moveDir = a.facing; ball.lockY = ball.y; ball.owner = a.id; ball.launcher = a; ball.isFireball = true;
+            ball.moveDir = a.facing; ball.lockY = a.y; ball.owner = a.id; ball.launcher = a; ball.isFireball = true;
             projectiles.add(ball);
+            a.scene.time.addEvent({ delay: 50, repeat: 20, callback: () => {
+                if(ball.active) {
+                    let trail = a.scene.add.circle(ball.x, ball.y, 10, 0xff8800, 0.5);
+                    a.scene.tweens.add({ targets: trail, alpha: 0, scale: 0.2, duration: 300, onComplete: () => trail.destroy() });
+                }
+            }});
+        } else {
+             if(Phaser.Math.Distance.Between(a.x, a.y, t.x, t.y) < 150) dealDamage(a, t, t.isBlocking ? 6 : 20);
+             spawnFX(a.scene, a.x, a.y, 0xffff00, 60);
         }
     }
 }
@@ -231,7 +241,6 @@ function setupMobileControls() {
     drawBtn(this, 260, 410, 'ATK', (v)=>{ if(v) handleCombat(p1, p2, 'atk') });
     drawBtn(this, 350, 410, 'SKL', (v)=>{ if(v) handleCombat(p1, p2, 'skl') });
     drawBtn(this, 305, 330, 'BLK', (v)=>p1.mBlock=v);
-
     if(mode === 2) {
         drawBtn(this, 500, 410, 'ATK', (v)=>{ if(v) handleCombat(p2, p1, 'atk') });
         drawBtn(this, 590, 410, 'SKL', (v)=>{ if(v) handleCombat(p2, p1, 'skl') });
@@ -261,12 +270,11 @@ function processAI(cpu, target) {
     else cpu.body.setVelocityX(0);
     cpu.facing = cpu.x > target.x ? -1 : 1;
     if (cpu.skillCD <= 0 && dist < 500) handleCombat(cpu, target, 'skl');
-    if (cpu.atkCD <= 0 && dist < 110) handleCombat(cpu, target, 'atk');
+    if (Math.random() < 0.05 && dist < 110) handleCombat(cpu, target, 'atk');
 }
 
 function createMenuBtn(scene, x, y, txt, cb) {
-    return scene.add.text(x, y, txt, { backgroundColor: '#222', padding: 12, color: '#fff' })
-        .setOrigin(0.5).setInteractive().on('pointerdown', cb);
+    return scene.add.text(x, y, txt, { backgroundColor: '#222', padding: 12, color: '#fff' }).setOrigin(0.5).setInteractive().on('pointerdown', cb);
 }
 
 function drawBtn(scene, x, y, label, callback) {

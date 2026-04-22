@@ -49,12 +49,18 @@ function selectP1() {
     CLASSES.forEach((name, i) => {
         createMenuBtn(this, 425, 100 + (i * 50), name, () => { selections.p1 = name; handleP1Choice.call(this); });
     });
-    createMenuBtn(this, 425, 360, '?? RANDOM ??', () => { selections.p1 = 'Random'; handleP1Choice.call(this); }).setStyle({fill: '#ffff00'});
+    createMenuBtn(this, 425, 360, '?? RANDOM ??', () => { 
+        selections.p1 = Math.random() < 0.1 ? 'Ghost' : CLASSES[Math.floor(Math.random()*5)];
+        handleP1Choice.call(this); 
+    }).setStyle({fill: '#ffff00'});
 }
 
 function handleP1Choice() {
     if (mode === 2) selectP2.call(this);
-    else { selections.p2 = 'Random'; startMatch.call(this); }
+    else { 
+        selections.p2 = Math.random() < 0.1 ? 'Ghost' : CLASSES[Math.floor(Math.random()*5)];
+        startMatch.call(this); 
+    }
 }
 
 function selectP2() {
@@ -63,45 +69,44 @@ function selectP2() {
     CLASSES.forEach((name, i) => {
         createMenuBtn(this, 425, 100 + (i * 50), name, () => { selections.p2 = name; startMatch.call(this); });
     });
-    createMenuBtn(this, 425, 360, '?? RANDOM ??', () => { selections.p2 = 'Random'; startMatch.call(this); }).setStyle({fill: '#ffff00'});
+    createMenuBtn(this, 425, 360, '?? RANDOM ??', () => { 
+        selections.p2 = Math.random() < 0.1 ? 'Ghost' : CLASSES[Math.floor(Math.random()*5)];
+        startMatch.call(this); 
+    }).setStyle({fill: '#ffff00'});
 }
 
 function startMatch() {
     this.children.removeAll();
     projectiles.clear(true, true);
     
-    let char1 = selections.p1 === 'Random' ? CLASSES[Math.floor(Math.random()*5)] : selections.p1;
-    let char2 = selections.p2 === 'Random' ? CLASSES[Math.floor(Math.random()*5)] : selections.p2;
-
+    p1 = createChar(this, 200, 300, 0x00ff00, selections.p1, 1);
+    p2 = createChar(this, 650, 300, 0xff0000, selections.p2, 2);
+    
     let ground = this.add.rectangle(425, 470, 850, 20, 0x222);
     this.physics.add.existing(ground, true);
-
-    p1 = createChar(this, 200, 300, 0x00ff00, char1, 1);
-    p2 = createChar(this, 650, 300, 0xff0000, char2, 2);
-    
     this.physics.add.collider([p1, p2], ground);
+
     this.physics.add.overlap(projectiles, [p1, p2], (char, proj) => {
         if (proj.owner !== char.id) {
-            let finalDmg = proj.isFireball ? 35 : 10;
-            
-            if (char.isBlocking) {
-                finalDmg *= 0.3; // 70% reduction
-                spawnFX(this, char.x, char.y, 0x00aaff, 40);
-            } else if (proj.isFireball) {
+            let finalDmg = proj.isFireball ? 35 : (proj.isGhostBlast ? 10 : 8);
+            if (char.isBlocking) finalDmg *= 0.3;
+            else if (proj.isFireball) {
                 char.isStunned = true;
                 this.time.delayedCall(1500, () => char.isStunned = false);
-                let pillar = this.add.rectangle(char.x, 240, 100, 480, 0xff6600, 0.8).setDepth(2);
-                this.tweens.add({ targets: pillar, alpha: 0, scaleX: 3, duration: 1000, onComplete: () => pillar.destroy() });
-                this.cameras.main.shake(200, 0.01);
+            } else if (proj.isGhostBlast) {
+                char.isStunned = true;
+                this.time.delayedCall(2000, () => char.isStunned = false);
             }
-            
             dealDamage(proj.launcher, char, finalDmg);
-            proj.destroy();
+            if (!proj.isGhostBlast) proj.destroy();
         }
     });
 
+    // UI Bars
     this.p1Bar = this.add.rectangle(20, 25, 200, 20, 0x00ff00).setOrigin(0);
+    this.p1Skl = this.add.rectangle(20, 48, 200, 8, 0x00ffff).setOrigin(0);
     this.p2Bar = this.add.rectangle(830, 25, 200, 20, 0xff0000).setOrigin(1, 0);
+    this.p2Skl = this.add.rectangle(830, 48, 200, 8, 0x00ffff).setOrigin(1, 0);
 
     this.add.text(425, 25, '||', { fontSize: '24px', backgroundColor: '#333', padding: 5 })
         .setOrigin(0.5).setInteractive().setDepth(200).on('pointerdown', () => togglePause.call(this));
@@ -113,76 +118,52 @@ function startMatch() {
     this.physics.pause();
     let count = 3;
     let txt = this.add.text(425, 200, '3', { fontSize: '80px', fontStyle: 'bold' }).setOrigin(0.5);
-    this.time.addEvent({
-        delay: 1000, repeat: 3,
-        callback: () => {
+    this.time.addEvent({ delay: 1000, repeat: 3, callback: () => {
             count--;
             if(count > 0) txt.setText(count);
             else if(count === 0) { txt.setText('FIGHT!'); this.physics.resume(); gameState = 'PLAYING'; }
             else txt.destroy();
-        }
-    });
-}
-
-function togglePause() {
-    if (gameState === 'END' || gameState === 'STARTING') return;
-    if (gameState === 'PLAYING') {
-        gameState = 'PAUSED'; this.physics.pause();
-        this.pnl = this.add.container(425, 240).setDepth(300);
-        this.pnl.add([this.add.rectangle(0, 0, 300, 200, 0x000, 0.9).setStrokeStyle(2, 0xfff), this.add.text(0, -60, 'PAUSED', {fontSize:'32px'}).setOrigin(0.5)]);
-        this.pnl.add(createMenuBtn(this, 0, 0, 'RESUME', () => togglePause.call(this)));
-        this.pnl.add(createMenuBtn(this, 0, 60, 'QUIT', () => location.reload()));
-    } else {
-        gameState = 'PLAYING'; this.physics.resume(); this.pnl.destroy();
-    }
+    }});
 }
 
 function createChar(scene, x, y, color, type, id) {
     let container = scene.add.container(x, y);
-    let head = scene.add.circle(0, -25, 15, color);
-    let body = scene.add.rectangle(0, 5, 8, 40, color);
-    let weapon = (type === 'Wizard') ? scene.add.container(20, 0) : scene.add.rectangle(20, 0, 45, 8, 0xccc).setOrigin(0, 0.5);
-    if(type === 'Wizard') {
-        weapon.add([scene.add.rectangle(0, 0, 6, 50, 0x5d3a1a).setAngle(45), scene.add.circle(18, -18, 6, 0xffd700)]);
-    }
+    let charColor = (type === 'Ghost') ? 0xaaaaaa : color;
+    let head = scene.add.circle(0, -25, 15, charColor);
+    let body = scene.add.rectangle(0, 5, 8, 40, charColor);
+    let weapon = (type === 'Wizard') ? scene.add.container(20, 0) : scene.add.rectangle(20, 0, 40, 8, 0xccc).setOrigin(0, 0.5);
+    if(type === 'Wizard') weapon.add([scene.add.rectangle(0,0,6,50,0x5d3a1a).setAngle(45), scene.add.circle(18,-18,6,0xffd700)]);
+    if(type === 'Ghost') { weapon.setAlpha(0.5); container.setAlpha(0.6); }
+
     container.add([head, body, weapon]);
     scene.physics.add.existing(container);
     container.body.setCollideWorldBounds(true).setSize(40, 70).setDragX(800);
     container.hp = 100; container.type = type; container.id = id;
-    container.skillCD = 0; container.atkCD = 0;
-    container.isStunned = false; container.isBlocking = false;
-    container.facing = (id === 1 ? 1 : -1);
+    container.maxSkl = (type === 'Ghost' ? 20000 : 8000); container.skillCD = 0;
+    container.isStunned = false; container.isBlocking = false; container.facing = (id === 1 ? 1 : -1);
     return container;
 }
 
 function update(time, delta) {
     if (gameState !== 'PLAYING') return;
-    
-    // P1 Keyboard
     p1.isBlocking = this.keys.SHIFT.isDown || p1.mBlock;
     processMove(p1, this.keys.A, this.keys.D);
-    
-    // P2 Keyboard or AI
-    if(mode === 2) {
-        p2.isBlocking = this.keys.SPACE.isDown || p2.mBlock;
-        processMove(p2, this.keys.LEFT, this.keys.RIGHT);
-    } else {
-        processAI(p2, p1);
-    }
+    if(mode === 2) { p2.isBlocking = this.keys.SPACE.isDown || p2.mBlock; processMove(p2, this.keys.LEFT, this.keys.RIGHT); }
+    else processAI(p2, p1);
 
     [p1, p2].forEach(p => {
         p.skillCD = Math.max(0, p.skillCD - delta);
-        p.atkCD = Math.max(0, p.atkCD - delta);
-        // Visual for blocking
         p.list[0].tint = p.isBlocking ? 0x00aaff : (p.isStunned ? 0xffaa00 : 0xffffff);
     });
 
+    // Update Skill Bars
+    this.p1Skl.width = (1 - (p1.skillCD / p1.maxSkl)) * 200;
+    this.p2Skl.width = (1 - (p2.skillCD / p2.maxSkl)) * 200;
+
     projectiles.getChildren().forEach(proj => {
         if(proj.active) {
-            proj.body.setAllowGravity(false);
-            proj.y = proj.lockY; 
-            proj.x += proj.moveDir * 4.5;
-            if (proj.x < -50 || proj.x > 900) proj.destroy();
+            proj.x += proj.moveDir * (proj.isGhostBlast ? 8 : 4.5);
+            if (proj.x < -100 || proj.x > 950) proj.destroy();
         }
     });
 
@@ -198,52 +179,33 @@ function processMove(p, l, r) {
     else p.body.setVelocityX(0);
 }
 
-function processAI(cpu, target) {
-    if (cpu.isStunned) return;
-    let dist = Math.abs(cpu.x - target.x);
-    // AI Blocks if Wizard is firing
-    cpu.isBlocking = (target.type === 'Wizard' && target.skillCD > 7500);
-    if(cpu.isBlocking) { cpu.body.setVelocityX(0); return; }
-
-    let ideal = cpu.type === 'Wizard' ? 320 : 70;
-    if (dist > ideal + 20) cpu.body.setVelocityX(cpu.x > target.x ? -160 : 160);
-    else cpu.body.setVelocityX(0);
-    cpu.facing = cpu.x > target.x ? -1 : 1;
-    cpu.list[2].x = cpu.facing * 20; cpu.list[2].scaleX = cpu.facing;
-    if (cpu.skillCD <= 0 && dist < 500) handleCombat(cpu, target, 'skl');
-    if (cpu.atkCD <= 0 && dist < 110) handleCombat(cpu, target, 'atk');
-}
-
 function handleCombat(a, t, type) {
     if (a.isStunned || a.isBlocking || gameState !== 'PLAYING') return; 
     if(type === 'atk' && a.atkCD <= 0) {
         a.atkCD = 600;
         a.scene.tweens.add({ targets: a.list[2], angle: a.facing > 0 ? 90 : -90, duration: 100, yoyo: true });
         if(Phaser.Math.Distance.Between(a.x, a.y, t.x, t.y) < 100) {
-            let dmg = t.isBlocking ? 4 : 12;
-            dealDamage(a, t, dmg);
+            dealDamage(a, t, t.isBlocking ? 4 : 10);
+            if(a.type === 'Ghost') t.body.setVelocityX(a.facing * 500); // Knockback punch
         }
     }
     if(type === 'skl' && a.skillCD <= 0) {
-        a.skillCD = 8000;
-        if(a.type === 'Wizard') {
+        a.skillCD = a.maxSkl;
+        if(a.type === 'Ghost') {
+            let blast = a.scene.add.rectangle(a.x, a.y, 100, 20, 0x00ffff).setDepth(4);
+            a.scene.physics.add.existing(blast);
+            blast.moveDir = a.facing; blast.owner = a.id; blast.launcher = a; blast.isGhostBlast = true;
+            projectiles.add(blast);
+            // Continuous damage logic
+            a.scene.time.addEvent({ delay: 1000, repeat: 2, callback: () => {
+                if(Phaser.Math.Bounds.Overlaps(blast.getBounds(), t.getBounds())) dealDamage(a, t, t.isBlocking ? 3 : 10);
+            }});
+            a.scene.time.delayedCall(3000, () => blast.destroy());
+        } else if(a.type === 'Wizard') {
             let ball = a.scene.add.circle(a.x + (a.facing * 40), a.y, 22, 0xff4400).setDepth(4);
             a.scene.physics.add.existing(ball);
-            ball.moveDir = a.facing; ball.lockY = ball.y;
-            ball.owner = a.id; ball.launcher = a; ball.isFireball = true;
+            ball.moveDir = a.facing; ball.lockY = ball.y; ball.owner = a.id; ball.launcher = a; ball.isFireball = true;
             projectiles.add(ball);
-            a.scene.time.addEvent({ delay: 40, repeat: 100, callback: () => {
-                if(ball.active) {
-                    let trail = a.scene.add.circle(ball.x, ball.y, 12, 0xff8800, 0.6);
-                    a.scene.tweens.add({ targets: trail, alpha: 0, scale: 0.1, duration: 400, onComplete: ()=>trail.destroy() });
-                }
-            }});
-        } else {
-            if(Phaser.Math.Distance.Between(a.x, a.y, t.x, t.y) < 160) {
-                 let dmg = t.isBlocking ? 6 : 20;
-                 dealDamage(a, t, dmg);
-            }
-            spawnFX(a.scene, a.x, a.y, 0xffff00, 80);
         }
     }
 }
@@ -263,23 +225,43 @@ function endGame(winner) {
 }
 
 function setupMobileControls() {
-    // P1 (Standard Layout)
     drawBtn(this, 60, 400, '←', (v)=>p1.mLeft=v);
     drawBtn(this, 160, 400, '→', (v)=>p1.mRight=v);
     drawBtn(this, 110, 310, '↑', (v)=>{ if(v && p1.body.touching.down) p1.body.setVelocityY(-600)});
     drawBtn(this, 260, 410, 'ATK', (v)=>{ if(v) handleCombat(p1, p2, 'atk') });
     drawBtn(this, 350, 410, 'SKL', (v)=>{ if(v) handleCombat(p1, p2, 'skl') });
-    drawBtn(this, 305, 330, 'BLK', (v)=>p1.mBlock=v); // Block for P1
+    drawBtn(this, 305, 330, 'BLK', (v)=>p1.mBlock=v);
 
-    // P2 (Mirrored Layout)
     if(mode === 2) {
         drawBtn(this, 500, 410, 'ATK', (v)=>{ if(v) handleCombat(p2, p1, 'atk') });
         drawBtn(this, 590, 410, 'SKL', (v)=>{ if(v) handleCombat(p2, p1, 'skl') });
-        drawBtn(this, 545, 330, 'BLK', (v)=>p2.mBlock=v); // Block for P2
+        drawBtn(this, 545, 330, 'BLK', (v)=>p2.mBlock=v);
         drawBtn(this, 690, 400, '←', (v)=>p2.mLeft=v);
         drawBtn(this, 790, 400, '→', (v)=>p2.mRight=v);
         drawBtn(this, 740, 310, '↑', (v)=>{ if(v && p2.body.touching.down) p2.body.setVelocityY(-600)});
     }
+}
+
+function togglePause() {
+    if (gameState === 'END' || gameState === 'STARTING') return;
+    if (gameState === 'PLAYING') {
+        gameState = 'PAUSED'; this.physics.pause();
+        this.pnl = this.add.container(425, 240).setDepth(300);
+        this.pnl.add([this.add.rectangle(0, 0, 300, 200, 0x000, 0.9).setStrokeStyle(2, 0xfff), this.add.text(0, -60, 'PAUSED', {fontSize:'32px'}).setOrigin(0.5)]);
+        this.pnl.add(createMenuBtn(this, 0, 0, 'RESUME', () => togglePause.call(this)));
+        this.pnl.add(createMenuBtn(this, 0, 60, 'QUIT', () => location.reload()));
+    } else { gameState = 'PLAYING'; this.physics.resume(); this.pnl.destroy(); }
+}
+
+function processAI(cpu, target) {
+    if (cpu.isStunned) return;
+    let dist = Math.abs(cpu.x - target.x);
+    let ideal = cpu.type === 'Wizard' ? 320 : 70;
+    if (dist > ideal + 20) cpu.body.setVelocityX(cpu.x > target.x ? -160 : 160);
+    else cpu.body.setVelocityX(0);
+    cpu.facing = cpu.x > target.x ? -1 : 1;
+    if (cpu.skillCD <= 0 && dist < 500) handleCombat(cpu, target, 'skl');
+    if (cpu.atkCD <= 0 && dist < 110) handleCombat(cpu, target, 'atk');
 }
 
 function createMenuBtn(scene, x, y, txt, cb) {

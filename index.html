@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Stickman Brawler: Mega Ghost Beam</title>
+    <title>Stickman Brawler: Freezer Update</title>
     <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser-arcade-physics.min.js"></script>
     <style>
         body { margin: 0; background: #000; overflow: hidden; touch-action: none; }
@@ -25,7 +25,7 @@ const config = {
 const game = new Phaser.Game(config);
 let p1, p2, projectiles, gameState = 'MENU', mode = 1;
 let selections = { p1: 'Wizard', p2: 'Wizard' };
-const CLASSES = ['Swordman', 'Wizard', 'Bomber', 'Digger', 'Engineer'];
+const CLASSES = ['Swordman', 'Wizard', 'Bomber', 'Digger', 'Engineer', 'Freezer'];
 
 function preload() {}
 
@@ -47,7 +47,7 @@ function selectP1() {
     this.children.removeAll();
     this.add.text(425, 40, 'P1: SELECT CLASS', { fontSize: '28px', color: '#0f0' }).setOrigin(0.5);
     CLASSES.forEach((name, i) => {
-        createMenuBtn(this, 425, 100 + (i * 50), name, () => { selections.p1 = name; handleP1Choice.call(this); });
+        createMenuBtn(this, 425, 80 + (i * 45), name, () => { selections.p1 = name; handleP1Choice.call(this); });
     });
 }
 
@@ -60,7 +60,7 @@ function selectP2() {
     this.children.removeAll();
     this.add.text(425, 40, 'P2: SELECT CLASS', { fontSize: '28px', color: '#f00' }).setOrigin(0.5);
     CLASSES.forEach((name, i) => {
-        createMenuBtn(this, 425, 100 + (i * 50), name, () => { selections.p2 = name; startMatch.call(this); });
+        createMenuBtn(this, 425, 80 + (i * 45), name, () => { selections.p2 = name; startMatch.call(this); });
     });
 }
 
@@ -85,9 +85,9 @@ function startMatch() {
     this.physics.add.overlap(projectiles, [p1, p2], (char, proj) => {
         if (proj.owner !== char.id) {
             if (proj.isGhostBeam) {
-                // Continuous melt damage logic
-                let damage = char.isBlocking ? 0.12 : 0.45;
-                dealDamage(proj.launcher, char, damage, false);
+                dealDamage(proj.launcher, char, char.isBlocking ? 0.12 : 0.45, false);
+            } else if (proj.isFreezeWave) {
+                applyFreeze(char, 3000);
             } else if (!proj.isBomb) {
                 dealDamage(proj.launcher, char, char.isBlocking ? 5 : 15);
                 proj.destroy();
@@ -107,7 +107,7 @@ function startMatch() {
 
 function createChar(scene, x, y, color, type, id) {
     let container = scene.add.container(x, y);
-    let c = (type === 'Ghost') ? 0xaaaaaa : color;
+    let c = (type === 'Ghost') ? 0xaaaaaa : (type === 'Freezer' ? 0x88ccff : color);
     let weapon = scene.add.rectangle(20, 0, 30, 6, 0xccc).setOrigin(0, 0.5);
     
     container.add([scene.add.circle(0, -25, 15, c), scene.add.rectangle(0, 5, 8, 40, c), weapon]);
@@ -115,7 +115,7 @@ function createChar(scene, x, y, color, type, id) {
     container.body.setCollideWorldBounds(true).setSize(40, 70);
     
     container.hp = 100; container.type = type; container.id = id;
-    container.maxSkl = (type === 'Ghost' ? 14000 : 8500); 
+    container.maxSkl = (type === 'Ghost' ? 14000 : (type === 'Freezer' ? 10000 : 8500)); 
     container.skillCD = 0; container.atkCD = 0; 
     container.isStunned = false; container.isBlocking = false; container.isChannelling = false; 
     container.facing = (id === 1 ? 1 : -1);
@@ -148,7 +148,7 @@ function update(time, delta) {
         p.alpha = p.isInvisible ? 0.2 : 1.0;
         p.indicator.setAlpha(p.isInvisible ? 1 : 0);
         p.shieldGraphic.setAlpha(p.shieldHits > 0 ? 0.4 : 0);
-        p.list[0].tint = p.isBlocking ? 0x00aaff : (p.isStunned ? 0xff0000 : 0xffffff);
+        p.list[0].tint = p.isBlocking ? 0x00aaff : (p.isStunned ? 0x00ffff : 0xffffff);
     });
 
     this.p1Skl.width = (1 - (p1.skillCD / p1.maxSkl)) * 200;
@@ -160,9 +160,7 @@ function update(time, delta) {
         if(proj.isGhostBeam) {
             proj.x = proj.launcher.x + (proj.launcher.facing * 400);
             proj.y = proj.launcher.y;
-            // Visual flickering/pulsing for the beam
-            proj.alpha = Phaser.Math.Between(7, 10) / 10;
-        } else if(proj.active && !proj.isBomb) {
+        } else if(proj.active && !proj.isBomb && !proj.isFreezeWave) {
             proj.x += proj.moveDir * proj.speed;
             if(proj.x < -300 || proj.x > 1150) proj.destroy();
         }
@@ -185,10 +183,12 @@ function handleCombat(a, t, type) {
         a.atkCD = 800;
         a.scene.tweens.add({ targets: a.list[2], angle: a.facing > 0 ? 90 : -90, duration: 150, yoyo: true });
         if(Phaser.Math.Distance.Between(a.x, a.y, t.x, t.y) < 100) {
-            if(a.isInvisible) {
+            if(a.type === 'Freezer') {
+                applyFreeze(t, 500); // 0.5s stun
+                dealDamage(a, t, 5);
+            } else if(a.isInvisible) {
                 a.isInvisible = false;
-                t.isStunned = true;
-                a.scene.time.delayedCall(1500, () => t.isStunned = false);
+                applyFreeze(t, 1500);
                 dealDamage(a, t, 25);
             } else {
                 dealDamage(a, t, t.isBlocking ? 3 : 10);
@@ -198,34 +198,21 @@ function handleCombat(a, t, type) {
 
     if(type === 'skl' && a.skillCD <= 0) {
         a.skillCD = a.maxSkl;
-        if(a.type === 'Ghost') {
+        if(a.type === 'Freezer') {
+            let wave = a.scene.add.rectangle(a.x + (a.facing * 150), a.y, 300, 100, 0x00ffff, 0.4);
+            a.scene.physics.add.existing(wave);
+            wave.body.setAllowGravity(false);
+            wave.owner = a.id; wave.launcher = a; wave.isFreezeWave = true; projectiles.add(wave);
+            a.scene.time.delayedCall(300, () => wave.destroy());
+        } else if(a.type === 'Ghost') {
             a.isChannelling = true;
-            // Create a multi-layered beam
             let glow = a.scene.add.rectangle(0, 0, 800, 160, 0x00ffff, 0.3).setDepth(3);
             let core = a.scene.add.rectangle(0, 0, 800, 40, 0xffffff, 0.8).setDepth(4);
             let beamGroup = a.scene.add.container(a.x + (a.facing * 400), a.y, [glow, core]);
-            
             a.scene.physics.add.existing(beamGroup);
             beamGroup.body.setAllowGravity(false);
-            beamGroup.owner = a.id; beamGroup.launcher = a; beamGroup.isGhostBeam = true;
-            projectiles.add(beamGroup);
-
-            // Beam duration: 2.5 seconds
-            a.scene.tweens.add({
-                targets: [glow, core],
-                scaleY: { from: 0.1, to: 1 },
-                duration: 200
-            });
-
-            a.scene.time.delayedCall(2500, () => {
-                a.scene.tweens.add({
-                    targets: beamGroup,
-                    alpha: 0,
-                    scaleY: 0,
-                    duration: 200,
-                    onComplete: () => { beamGroup.destroy(); a.isChannelling = false; }
-                });
-            });
+            beamGroup.owner = a.id; beamGroup.launcher = a; beamGroup.isGhostBeam = true; projectiles.add(beamGroup);
+            a.scene.time.delayedCall(2500, () => { beamGroup.destroy(); a.isChannelling = false; });
         } else if(a.type === 'Wizard') {
             let ball = a.scene.add.circle(a.x, a.y, 18, 0xff4400);
             a.scene.physics.add.existing(ball); ball.body.setAllowGravity(false);
@@ -247,11 +234,16 @@ function handleCombat(a, t, type) {
     }
 }
 
+function applyFreeze(t, dur) {
+    if(t.isStunned) return;
+    t.isStunned = true;
+    let ice = t.scene.add.rectangle(t.x, t.y, 60, 80, 0x00ffff, 0.5);
+    t.scene.time.delayedCall(dur, () => { t.isStunned = false; ice.destroy(); });
+}
+
 function dealDamage(a, t, d, fx=true) {
-    if(t.shieldHits > 0 && d > 1) { // Only shields block significant hits, not beam ticks
+    if(t.shieldHits > 0 && d > 1) { 
         t.shieldHits--;
-        let pulse = t.scene.add.circle(t.x, t.y, 60, 0xffffff, 0.8);
-        t.scene.tweens.add({targets: pulse, alpha: 0, scale: 1.5, duration: 200, onComplete: () => pulse.destroy()});
         return;
     }
     t.hp -= d; 
@@ -291,7 +283,7 @@ function processAI(c, t) {
     let d = Math.abs(c.x - t.x);
     if(d > 150) c.body.setVelocityX(c.x > t.x ? -150 : 150); else c.body.setVelocityX(0);
     c.facing = c.x > t.x ? -1 : 1;
-    if(c.skillCD <= 0 && d < 400) handleCombat(c, t, 'skl');
+    if(c.skillCD <= 0 && d < 250) handleCombat(c, t, 'skl');
     if(c.atkCD <= 0 && d < 100) handleCombat(c, t, 'atk');
 }
 </script>

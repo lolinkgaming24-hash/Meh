@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Stickman Brawler: Wizard Fixed</title>
+    <title>Stickman Brawler: Fixed On-Hit</title>
     <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser-arcade-physics.min.js"></script>
     <style>
         body { margin: 0; background: #000; overflow: hidden; touch-action: none; }
@@ -49,18 +49,12 @@ function selectP1() {
     CLASSES.forEach((name, i) => {
         createMenuBtn(this, 425, 100 + (i * 50), name, () => { selections.p1 = name; handleP1Choice.call(this); });
     });
-    createMenuBtn(this, 425, 360, '?? RANDOM ??', () => { 
-        selections.p1 = Math.random() < 0.1 ? 'Ghost' : CLASSES[Math.floor(Math.random()*5)];
-        handleP1Choice.call(this); 
-    }).setStyle({fill: '#ffff00'});
+    createMenuBtn(this, 425, 360, '?? RANDOM ??', () => { selections.p1 = 'Random'; handleP1Choice.call(this); }).setStyle({fill: '#ffff00'});
 }
 
 function handleP1Choice() {
     if (mode === 2) selectP2.call(this);
-    else { 
-        selections.p2 = Math.random() < 0.1 ? 'Ghost' : CLASSES[Math.floor(Math.random()*5)];
-        startMatch.call(this); 
-    }
+    else { selections.p2 = 'Random'; startMatch.call(this); }
 }
 
 function selectP2() {
@@ -69,18 +63,22 @@ function selectP2() {
     CLASSES.forEach((name, i) => {
         createMenuBtn(this, 425, 100 + (i * 50), name, () => { selections.p2 = name; startMatch.call(this); });
     });
-    createMenuBtn(this, 425, 360, '?? RANDOM ??', () => { 
-        selections.p2 = Math.random() < 0.1 ? 'Ghost' : CLASSES[Math.floor(Math.random()*5)];
-        startMatch.call(this); 
-    }).setStyle({fill: '#ffff00'});
+    createMenuBtn(this, 425, 360, '?? RANDOM ??', () => { selections.p2 = 'Random'; startMatch.call(this); }).setStyle({fill: '#ffff00'});
+}
+
+function getRandomChar() {
+    return Math.random() < 0.25 ? 'Ghost' : CLASSES[Math.floor(Math.random() * CLASSES.length)];
 }
 
 function startMatch() {
     this.children.removeAll();
     projectiles.clear(true, true);
     
-    p1 = createChar(this, 200, 300, 0x00ff00, selections.p1, 1);
-    p2 = createChar(this, 650, 300, 0xff0000, selections.p2, 2);
+    let char1 = (selections.p1 === 'Random') ? getRandomChar() : selections.p1;
+    let char2 = (selections.p2 === 'Random') ? getRandomChar() : selections.p2;
+
+    p1 = createChar(this, 200, 300, 0x00ff00, char1, 1);
+    p2 = createChar(this, 650, 300, 0xff0000, char2, 2);
     
     let ground = this.add.rectangle(425, 470, 850, 20, 0x222);
     this.physics.add.existing(ground, true);
@@ -89,20 +87,23 @@ function startMatch() {
     this.physics.add.overlap(projectiles, [p1, p2], (char, proj) => {
         if (proj.owner !== char.id) {
             let finalDmg = proj.isFireball ? 35 : (proj.isGhostBlast ? 10 : 8);
+            
             if (char.isBlocking) {
                 finalDmg *= 0.3;
                 spawnFX(this, char.x, char.y, 0x00aaff, 30);
             } else {
+                // FIREBALL ON-HIT LOGIC
                 if (proj.isFireball) {
                     char.isStunned = true;
                     this.time.delayedCall(1500, () => char.isStunned = false);
                     let pillar = this.add.rectangle(char.x, 240, 100, 480, 0xff6600, 0.8).setDepth(2);
-                    this.tweens.add({ targets: pillar, alpha: 0, scaleX: 3, duration: 1000, onComplete: () => pillar.destroy() });
+                    this.tweens.add({ targets: pillar, alpha: 0, scaleX: 3, duration: 800, onComplete: () => pillar.destroy() });
                 } else if (proj.isGhostBlast) {
                     char.isStunned = true;
                     this.time.delayedCall(2000, () => char.isStunned = false);
                 }
             }
+            
             dealDamage(proj.launcher, char, finalDmg);
             if (!proj.isGhostBlast) proj.destroy();
         }
@@ -131,15 +132,17 @@ function startMatch() {
 function createChar(scene, x, y, color, type, id) {
     let container = scene.add.container(x, y);
     let c = (type === 'Ghost') ? 0xaaaaaa : color;
-    container.add([scene.add.circle(0, -25, 15, c), scene.add.rectangle(0, 5, 8, 40, c)]);
+    let head = scene.add.circle(0, -25, 15, c);
+    let body = scene.add.rectangle(0, 5, 8, 40, c);
     let weapon = (type === 'Wizard') ? scene.add.container(20, 0) : scene.add.rectangle(20, 0, 40, 8, 0xccc).setOrigin(0, 0.5);
     if(type === 'Wizard') weapon.add([scene.add.rectangle(0,0,6,50,0x5d3a1a).setAngle(45), scene.add.circle(18,-18,6,0xffd700)]);
-    if(type === 'Ghost') { weapon.setAlpha(0.5); container.setAlpha(0.6); }
-    container.add(weapon);
+    if(type === 'Ghost') container.setAlpha(0.6);
+    container.add([head, body, weapon]);
     scene.physics.add.existing(container);
     container.body.setCollideWorldBounds(true).setSize(40, 70);
     container.hp = 100; container.type = type; container.id = id;
-    container.maxSkl = (type === 'Ghost' ? 20000 : 8000); container.skillCD = 0;
+    container.maxSkl = (type === 'Ghost' ? 20000 : 8000); 
+    container.skillCD = 0; container.atkCD = 0; 
     container.isStunned = false; container.isBlocking = false; container.facing = (id === 1 ? 1 : -1);
     return container;
 }
@@ -148,12 +151,16 @@ function update(time, delta) {
     if (gameState !== 'PLAYING') return;
     p1.isBlocking = this.keys.SHIFT.isDown || p1.mBlock;
     processMove(p1, this.keys.A, this.keys.D);
-    if(mode === 2) { p2.isBlocking = this.keys.SPACE.isDown || p2.mBlock; processMove(p2, this.keys.LEFT, this.keys.RIGHT); }
-    else processAI(p2, p1);
+    if(mode === 2) { 
+        p2.isBlocking = this.keys.SPACE.isDown || p2.mBlock; 
+        processMove(p2, this.keys.LEFT, this.keys.RIGHT); 
+    } else processAI(p2, p1);
 
     [p1, p2].forEach(p => {
         p.skillCD = Math.max(0, p.skillCD - delta);
+        p.atkCD = Math.max(0, p.atkCD - delta);
         p.list[0].tint = p.isBlocking ? 0x00aaff : (p.isStunned ? 0xffaa00 : 0xffffff);
+        p.list[2].setAlpha(p.atkCD > 0 ? 0.2 : (p.type === 'Ghost' ? 0.6 : 1.0));
     });
 
     this.p1Skl.width = (1 - (p1.skillCD / p1.maxSkl)) * 200;
@@ -161,8 +168,8 @@ function update(time, delta) {
 
     projectiles.getChildren().forEach(proj => {
         if(proj.active) {
-            proj.body.setAllowGravity(false); // Double safety
-            proj.y = proj.startY; // FORCE THE Y POSITION
+            proj.body.setAllowGravity(false);
+            proj.y = proj.startY; 
             proj.x += proj.moveDir * proj.speed;
             if (proj.x < -100 || proj.x > 950) proj.destroy();
         }
@@ -182,13 +189,16 @@ function processMove(p, l, r) {
 
 function handleCombat(a, t, type) {
     if (a.isStunned || a.isBlocking || gameState !== 'PLAYING') return; 
-    if(type === 'atk') {
-        a.scene.tweens.add({ targets: a.list[2], angle: a.facing > 0 ? 90 : -90, duration: 100, yoyo: true });
+
+    if(type === 'atk' && a.atkCD <= 0) {
+        a.atkCD = 1500; 
+        a.scene.tweens.add({ targets: a.list[2], angle: a.facing > 0 ? 90 : -90, duration: 150, yoyo: true });
         if(Phaser.Math.Distance.Between(a.x, a.y, t.x, t.y) < 100) {
             dealDamage(a, t, t.isBlocking ? 4 : 10);
-            if(a.type === 'Ghost') t.body.setVelocityX(a.facing * 600); 
+            if(a.type === 'Ghost') t.body.setVelocityX(a.facing * 700); 
         }
     }
+
     if(type === 'skl' && a.skillCD <= 0) {
         a.skillCD = a.maxSkl;
         if(a.type === 'Ghost') {
@@ -247,11 +257,11 @@ function endGame(winner) {
 function processAI(cpu, target) {
     if (cpu.isStunned) return;
     let dist = Math.abs(cpu.x - target.x);
-    if (dist > 300) cpu.body.setVelocityX(cpu.x > target.x ? -160 : 160);
+    if (dist > 250) cpu.body.setVelocityX(cpu.x > target.x ? -160 : 160);
     else cpu.body.setVelocityX(0);
     cpu.facing = cpu.x > target.x ? -1 : 1;
     if (cpu.skillCD <= 0 && dist < 500) handleCombat(cpu, target, 'skl');
-    if (Math.random() < 0.05 && dist < 110) handleCombat(cpu, target, 'atk');
+    if (cpu.atkCD <= 0 && dist < 110) handleCombat(cpu, target, 'atk');
 }
 
 function createMenuBtn(scene, x, y, txt, cb) {

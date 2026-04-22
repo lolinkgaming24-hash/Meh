@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Stickman Brawler: Fixed Random & Pause</title>
+    <title>Stickman Brawler: Ghost Overhaul</title>
     <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser-arcade-physics.min.js"></script>
     <style>
         body { margin: 0; background: #000; overflow: hidden; touch-action: none; }
@@ -67,7 +67,6 @@ function selectP2() {
 }
 
 function getRandomChar() {
-    // 25% chance for Ghost
     return Math.random() < 0.25 ? 'Ghost' : CLASSES[Math.floor(Math.random() * CLASSES.length)];
 }
 
@@ -75,7 +74,6 @@ function startMatch() {
     this.children.removeAll();
     projectiles.clear(true, true);
     
-    // FORCE RANDOM RE-ROLL ON REMATCH
     let char1 = (selections.p1 === 'Random') ? getRandomChar() : selections.p1;
     let char2 = (selections.p2 === 'Random') ? getRandomChar() : selections.p2;
 
@@ -88,33 +86,28 @@ function startMatch() {
 
     this.physics.add.overlap(projectiles, [p1, p2], (char, proj) => {
         if (proj.owner !== char.id) {
-            let finalDmg = proj.isFireball ? 35 : (proj.isGhostBlast ? 10 : 8);
-            if (char.isBlocking) {
-                finalDmg *= 0.3;
-                spawnFX(this, char.x, char.y, 0x00aaff, 30);
-            } else {
+            let finalDmg = proj.isFireball ? 35 : (proj.isGhostBeam ? 4 : 8);
+            if (char.isBlocking) finalDmg *= 0.3;
+
+            if (!char.isBlocking) {
                 if (proj.isFireball) {
                     char.isStunned = true;
                     this.time.delayedCall(1500, () => char.isStunned = false);
                     let pillar = this.add.rectangle(char.x, 240, 100, 480, 0xff6600, 0.8).setDepth(2);
                     this.tweens.add({ targets: pillar, alpha: 0, scaleX: 3, duration: 800, onComplete: () => pillar.destroy() });
-                } else if (proj.isGhostBlast) {
-                    char.isStunned = true;
-                    this.time.delayedCall(2000, () => char.isStunned = false);
                 }
             }
+            
             dealDamage(proj.launcher, char, finalDmg);
-            if (!proj.isGhostBlast) proj.destroy();
+            if (!proj.isGhostBeam) proj.destroy();
         }
     });
 
-    // UI
     this.p1Bar = this.add.rectangle(20, 25, 200, 20, 0x00ff00).setOrigin(0);
     this.p1Skl = this.add.rectangle(20, 48, 200, 8, 0x00ffff).setOrigin(0);
     this.p2Bar = this.add.rectangle(830, 25, 200, 20, 0xff0000).setOrigin(1, 0);
     this.p2Skl = this.add.rectangle(830, 48, 200, 8, 0x00ffff).setOrigin(1, 0);
 
-    // PAUSE BUTTON
     createMenuBtn(this, 425, 30, 'PAUSE', () => {
         if (gameState === 'PLAYING') {
             this.physics.pause();
@@ -153,9 +146,9 @@ function createChar(scene, x, y, color, type, id) {
     scene.physics.add.existing(container);
     container.body.setCollideWorldBounds(true).setSize(40, 70);
     container.hp = 100; container.type = type; container.id = id;
-    container.maxSkl = (type === 'Ghost' ? 20000 : 8000); 
+    container.maxSkl = (type === 'Ghost' ? 12000 : 8000); 
     container.skillCD = 0; container.atkCD = 0; 
-    container.isStunned = false; container.isBlocking = false; container.facing = (id === 1 ? 1 : -1);
+    container.isStunned = false; container.isBlocking = false; container.isChannelling = false; container.facing = (id === 1 ? 1 : -1);
     return container;
 }
 
@@ -172,7 +165,7 @@ function update(time, delta) {
     [p1, p2].forEach(p => {
         p.skillCD = Math.max(0, p.skillCD - delta);
         p.atkCD = Math.max(0, p.atkCD - delta);
-        p.list[0].tint = p.isBlocking ? 0x00aaff : (p.isStunned ? 0xffaa00 : 0xffffff);
+        p.list[0].tint = p.isBlocking ? 0x00aaff : (p.isStunned || p.isChannelling ? 0xffaa00 : 0xffffff);
         p.list[2].setAlpha(p.atkCD > 0 ? 0.2 : (p.type === 'Ghost' ? 0.6 : 1.0));
     });
 
@@ -181,9 +174,11 @@ function update(time, delta) {
 
     projectiles.getChildren().forEach(proj => {
         if(proj.active) {
-            proj.y = proj.startY; 
-            proj.x += proj.moveDir * proj.speed;
-            if (proj.x < -100 || proj.x > 950) proj.destroy();
+            if(!proj.isGhostBeam) {
+                proj.y = proj.startY; 
+                proj.x += proj.moveDir * proj.speed;
+            }
+            if (proj.x < -400 || proj.x > 1250) proj.destroy();
         }
     });
 
@@ -193,16 +188,15 @@ function update(time, delta) {
 }
 
 function processMove(p, l, r) {
-    if (p.isStunned || p.isBlocking) { p.body.setVelocityX(0); return; }
+    if (p.isStunned || p.isBlocking || p.isChannelling) { p.body.setVelocityX(0); return; }
     if (l?.isDown || p.mLeft) { p.body.setVelocityX(-220); p.list[2].x = -20; p.facing = -1; p.list[2].scaleX = -1; }
     else if (r?.isDown || p.mRight) { p.body.setVelocityX(220); p.list[2].x = 20; p.facing = 1; p.list[2].scaleX = 1; }
     else p.body.setVelocityX(0);
 }
 
 function handleCombat(a, t, type) {
-    if (a.isStunned || a.isBlocking || gameState !== 'PLAYING') return; 
+    if (a.isStunned || a.isBlocking || a.isChannelling || gameState !== 'PLAYING') return; 
 
-    // FIXED: HARD BLOCK ON SPAM
     if(type === 'atk' && a.atkCD <= 0) {
         a.atkCD = 1500; 
         a.scene.tweens.add({ targets: a.list[2], angle: a.facing > 0 ? 90 : -90, duration: 150, yoyo: true });
@@ -215,11 +209,20 @@ function handleCombat(a, t, type) {
     if(type === 'skl' && a.skillCD <= 0) {
         a.skillCD = a.maxSkl;
         if(a.type === 'Ghost') {
-            let blast = a.scene.add.rectangle(a.x, a.y, 80, 25, 0x00ffff, 0.7).setDepth(4);
-            a.scene.physics.add.existing(blast);
-            blast.moveDir = a.facing; blast.startY = a.y; blast.owner = a.id; blast.launcher = a; 
-            blast.isGhostBlast = true; blast.speed = 8;
-            projectiles.add(blast);
+            a.isChannelling = true;
+            let beam = a.scene.add.rectangle(a.x + (a.facing * 300), a.y, 600, 120, 0x00ffff, 0.5).setDepth(4);
+            a.scene.physics.add.existing(beam);
+            beam.owner = a.id; beam.launcher = a; beam.isGhostBeam = true;
+            projectiles.add(beam);
+            
+            // Channeling logic
+            a.scene.tweens.add({
+                targets: beam,
+                alpha: { from: 0.8, to: 0 },
+                scaleY: 1.5,
+                duration: 1000,
+                onComplete: () => { beam.destroy(); a.isChannelling = false; }
+            });
         } else if(a.type === 'Wizard') {
             let ball = a.scene.add.circle(a.x + (a.facing * 40), a.y, 22, 0xff4400).setDepth(4);
             a.scene.physics.add.existing(ball);
@@ -265,7 +268,7 @@ function endGame(winner) {
 }
 
 function processAI(cpu, target) {
-    if (cpu.isStunned) return;
+    if (cpu.isStunned || cpu.isChannelling) return;
     let dist = Math.abs(cpu.x - target.x);
     if (dist > 250) cpu.body.setVelocityX(cpu.x > target.x ? -160 : 160);
     else cpu.body.setVelocityX(0);

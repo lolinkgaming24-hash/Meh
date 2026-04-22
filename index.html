@@ -3,199 +3,266 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Jujutsu Sendai: Absolute Stability</title>
+    <title>Jujutsu Sendai: Absolute Hope Edition</title>
     <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser-arcade-physics.min.js"></script>
     <style>
-        body { margin: 0; background: #000; overflow: hidden; touch-action: none; font-family: 'Courier New', Courier, monospace; }
-        canvas { display: block; margin: 0 auto; border: 2px solid #333; }
+        body { margin: 0; background: #000; overflow: hidden; touch-action: none; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        canvas { display: block; margin: 0 auto; box-shadow: 0 0 30px rgba(0,255,255,0.1); }
     </style>
 </head>
 <body>
 <script>
-/** * ENGINE CONFIGURATION 
- * Supports 5+ simultaneous touch points.
+/**
+ * JUJUTSU SENDAI: THE ABSOLUTE ENGINE
+ * Features: 
+ * - Multi-touch Pointer Mapping
+ * - Layered Physics (4-Tier)
+ * - Ryu/Yuta Beam Clashing System
+ * - Advanced State-Based AI
  */
-const config = {
+
+const CONFIG = {
     type: Phaser.AUTO,
     width: 850,
     height: 480,
-    backgroundColor: '#050505',
+    backgroundColor: '#020205',
     scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
-    input: { activePointers: 10 }, 
+    input: { activePointers: 10 },
     physics: { 
         default: 'arcade', 
-        arcade: { gravity: { y: 2000 }, debug: false, tileBias: 32 } 
+        arcade: { gravity: { y: 2200 }, debug: false } 
     },
     scene: { preload: preload, create: create, update: update }
 };
 
-const game = new Phaser.Game(config);
-let p1, p2, projectiles, floor, timerText, matchTimer, gameState = 'MENU', mode = 1;
-let p1Type, p2Type, p1IsRand = false, p2IsRand = false;
+const game = new Phaser.Game(CONFIG);
 
-function preload() {}
+// Global State
+let p1, p2, floor, projectiles, timerText, matchTimer;
+let gameState = 'MENU';
+let mode = 1; // 1 = AI, 2 = PVP
+let p1Type, p2Type, p1IsRand, p2IsRand;
+
+function preload() {
+    // Graphics are generated procedurally to ensure no broken asset links
+}
 
 function create() {
-    projectiles = this.physics.add.group({ allowGravity: false });
+    projectiles = this.physics.add.group();
     showMainMenu.call(this);
 }
+
+// --- UI & MENUS ---
 
 function showMainMenu() {
     gameState = 'MENU';
     this.children.removeAll();
-    this.add.text(425, 120, 'STICKMAN: SENDAI COLONY', { fontSize: '42px', color: '#fff', fontStyle: 'bold' }).setOrigin(0.5);
     
-    const createBtn = (y, txt, clr, cb) => {
-        let b = this.add.container(425, y);
-        let bg = this.add.rectangle(0, 0, 320, 50, clr).setInteractive();
-        let t = this.add.text(0, 0, txt, { fontSize: '24px' }).setOrigin(0.5);
-        bg.on('pointerdown', cb);
-        b.add([bg, t]);
-    };
+    this.add.text(425, 100, 'STICKMAN: JUJUTSU SENDAI', { fontSize: '48px', color: '#00ffff', fontStyle: 'bold' }).setOrigin(0.5);
+    this.add.text(425, 150, 'ABSOLUTE EDITION', { fontSize: '18px', color: '#ffffff' }).setOrigin(0.5);
 
-    createBtn(260, '1 PLAYER (VS AI)', 0x2ecc71, () => { mode = 1; showSelect.call(this, 1); });
-    createBtn(340, '2 PLAYER (LOCAL)', 0x3498db, () => { mode = 2; showSelect.call(this, 1); });
+    createMenuBtn(this, 425, 260, 'SINGLE PLAYER (VS AI)', 0x2ecc71, () => {
+        mode = 1;
+        showSelect.call(this, 1);
+    });
+
+    createMenuBtn(this, 425, 340, 'TWO PLAYER (VERSUS)', 0x3498db, () => {
+        mode = 2;
+        showSelect.call(this, 1);
+    });
+}
+
+function createMenuBtn(scene, x, y, txt, color, cb) {
+    const container = scene.add.container(x, y);
+    const bg = scene.add.rectangle(0, 0, 350, 55, color).setInteractive().setStrokeStyle(2, 0xffffff);
+    const text = scene.add.text(0, 0, txt, { fontSize: '22px', fontStyle: 'bold' }).setOrigin(0.5);
+    
+    bg.on('pointerdown', () => {
+        scene.tweens.add({ targets: container, scale: 0.95, duration: 50, yoyo: true });
+        cb();
+    });
+    
+    container.add([bg, text]);
 }
 
 function showSelect(pNum) {
     this.children.removeAll();
-    this.add.text(425, 40, `SELECT PLAYER ${pNum}`, { fontSize: '30px', color: '#fff' }).setOrigin(0.5);
+    this.add.text(425, 50, `PLAYER ${pNum} - CHOOSE YOUR CLASS`, { fontSize: '28px', color: '#fff' }).setOrigin(0.5);
+
     const classes = ['Swordman', 'Wizard', 'Bomber', 'Digger', 'Freezer', '?? RANDOM ??'];
     
     classes.forEach((name, i) => {
-        let btn = this.add.text(425, 100 + (i * 50), name, { 
-            fontSize: '22px', backgroundColor: '#1a1a1a', padding: 10, minWidth: 250, align: 'center' 
-        }).setOrigin(0.5).setInteractive();
-        
+        const btn = this.add.text(425, 120 + (i * 50), name.toUpperCase(), {
+            fontSize: '20px', backgroundColor: '#111', padding: 12, minWidth: 280, align: 'center'
+        }).setOrigin(0.5).setInteractive().setStrokeStyle(1, 0x444);
+
         btn.on('pointerdown', () => {
-            let selectedType = name;
-            let randomFlag = false;
+            let finalType = name;
+            let isRandom = false;
+
             if (name === '?? RANDOM ??') {
-                randomFlag = true;
-                selectedType = Math.random() < 0.1 ? 'Ghost' : classes[Math.floor(Math.random() * 5)];
+                isRandom = true;
+                const roll = Math.random();
+                if (roll < 0.10) finalType = 'Ghost'; // Ryu roll
+                else finalType = classes[Math.floor(Math.random() * 5)];
             }
 
             if (pNum === 1) {
-                p1Type = selectedType; p1IsRand = randomFlag;
-                mode === 2 ? showSelect.call(this, 2) : (p2Type = (p1Type === 'Ghost' ? 'Reaper' : 'Wizard'), startMatch.call(this));
+                p1Type = finalType; p1IsRand = isRandom;
+                if (mode === 2) showSelect.call(this, 2);
+                else {
+                    p2Type = (p1Type === 'Ghost' ? 'Reaper' : 'Wizard');
+                    p2IsRand = false;
+                    startMatch.call(this);
+                }
             } else {
-                p2Type = (p1Type === 'Ghost') ? 'Reaper' : (p1Type === 'Reaper' ? 'Ghost' : selectedType);
-                p2IsRand = randomFlag;
+                p2Type = (p1Type === 'Ghost' ? 'Reaper' : (p1Type === 'Reaper' ? 'Ghost' : finalType));
+                p2IsRand = isRandom;
                 startMatch.call(this);
             }
         });
     });
 }
 
+// --- GAMEPLAY ENGINE ---
+
 function startMatch() {
     this.children.removeAll();
     projectiles.clear(true, true);
     matchTimer = 90;
 
-    // SOLID FLOOR LOGIC
-    floor = this.add.rectangle(425, 470, 850, 20, 0x444444);
+    // Solid Foundation
+    floor = this.add.rectangle(425, 470, 850, 20, 0x222222);
     this.physics.add.existing(floor, true);
 
     p1 = spawnPlayer(this, 150, 400, p1Type, 1);
     p2 = spawnPlayer(this, 700, 400, p2Type, 2);
 
-    // CORE COLLIDERS
+    // Physics Tier 1: Grounding
     this.physics.add.collider([p1, p2], floor);
-    this.physics.add.collider(projectiles, floor); // Keeps bombs on top
-
-    this.physics.add.overlap(projectiles, [p1, p2], (victim, bullet) => {
-        if (bullet.owner === victim.id) return;
-        let finalDmg = bullet.dmg;
-        if (victim.isBlocking) finalDmg *= 0.15;
-        victim.hp -= finalDmg;
-        if (!bullet.isBeam) bullet.destroy();
+    
+    // Physics Tier 2: Projectiles vs Players
+    this.physics.add.overlap(projectiles, [p1, p2], (victim, proj) => {
+        if (proj.owner === victim.id) return;
+        
+        let dmg = proj.dmg;
+        if (victim.isBlocking) {
+            dmg *= 0.1; // Block takes 90% less damage
+            victim.scene.add.circle(victim.x, victim.y, 40, 0xffffff, 0.2).setAlpha(0.5);
+        }
+        
+        victim.hp -= dmg;
+        if (!proj.isBeam) proj.destroy();
     });
 
-    this.p1HP = this.add.rectangle(20, 30, 250, 15, 0x00ff00).setOrigin(0);
-    this.p2HP = this.add.rectangle(830, 30, 250, 15, 0xff0000).setOrigin(1, 0);
-    timerText = this.add.text(425, 35, '90', { fontSize: '36px', fontStyle: 'bold' }).setOrigin(0.5);
+    // Physics Tier 3: Bomber Gravity
+    this.physics.add.collider(projectiles, floor, (proj) => {
+        if (proj.isBomb) proj.body.setVelocityX(proj.body.velocity.x * 0.8);
+    });
 
-    createUIControls(this);
-    runMatchStart.call(this);
-}
+    // Physics Tier 4: BEAM CLASHING
+    this.physics.add.overlap(projectiles, projectiles, (b1, b2) => {
+        if (b1.isBeam && b2.isBeam && b1.owner !== b2.owner) {
+            const clashX = (b1.x + b2.x) / 2;
+            createClashEffect(this, clashX, b1.y);
+            b1.destroy();
+            b2.destroy();
+        }
+    });
 
-function runMatchStart() {
-    gameState = 'COUNT';
-    this.physics.pause();
-    let count = 3;
-    let t = this.add.text(425, 240, '3', { fontSize: '120px' }).setOrigin(0.5);
-    this.time.addEvent({ delay: 1000, repeat: 3, callback: () => {
-        count--;
-        if (count > 0) t.setText(count);
-        else if (count === 0) t.setText('FIGHT!');
-        else { t.destroy(); this.physics.resume(); gameState = 'PLAY'; }
-    }});
+    // HUD
+    this.p1HP = this.add.rectangle(20, 30, 250, 20, 0x00ff00).setOrigin(0);
+    this.p2HP = this.add.rectangle(830, 30, 250, 20, 0xff0000).setOrigin(1, 0);
+    timerText = this.add.text(425, 40, '90', { fontSize: '40px', fontStyle: 'bold' }).setOrigin(0.5);
+
+    setupTouchInterface(this);
+    runCountdown.call(this);
 }
 
 function spawnPlayer(scene, x, y, type, id) {
     const p = scene.add.container(x, y);
     scene.physics.add.existing(p);
-    p.body.setCollideWorldBounds(true).setSize(40, 75).setOffset(-20, -37);
+    p.body.setCollideWorldBounds(true).setSize(40, 80).setOffset(-20, -40);
     
     const color = (id === 1) ? 0x00ff00 : 0xff0000;
-    const bodyParts = [
-        scene.add.circle(0, -28, 15, color), // Head
-        scene.add.rectangle(0, 5, 12, 45, color), // Body
-        scene.add.container(22, 5) // Weapon Container
-    ];
-
-    // Visual Weapon Sprites
-    if (type === 'Wizard') bodyParts[2].add([scene.add.rectangle(0,0,6,60,0x5d3a1a), scene.add.circle(0,-30,10,0xff0000)]);
-    else if (type === 'Digger') bodyParts[2].add([scene.add.rectangle(0,0,6,40,0x444), scene.add.rectangle(0,-20,30,8,0x777)]);
-    else if (type === 'Freezer') bodyParts[2].add(scene.add.rectangle(0,0,45,15,0x00ffff));
-    else bodyParts[2].add(scene.add.rectangle(0,0,45,6,0xcccccc));
-
-    p.add(bodyParts);
-    p.id = id; p.type = type; p.hp = 100; p.facing = (id === 1 ? 1 : -1);
-    p.atkCD = 0; p.sklCD = 0; p.isBlocking = false; p.stunned = false;
     
-    // Control States
-    p.ctrl = { L: false, R: false, J: false };
+    // Procedural Stickman
+    const head = scene.add.circle(0, -30, 16, color).setStrokeStyle(2, 0xffffff);
+    const body = scene.add.rectangle(0, 10, 12, 50, color).setStrokeStyle(1, 0xffffff);
+    const weaponContainer = scene.add.container(25, 10);
+    
+    // Weapon Visuals
+    if (type === 'Wizard') {
+        weaponContainer.add([scene.add.rectangle(0,0,6,70,0x4e342e), scene.add.circle(0,-35,10,0xff0000)]);
+    } else if (type === 'Digger') {
+        weaponContainer.add([scene.add.rectangle(0,0,8,45,0x333), scene.add.rectangle(0,-20,35,10,0x999)]);
+    } else if (type === 'Freezer') {
+        weaponContainer.add(scene.add.rectangle(0,0,50,15,0x00ffff).setAlpha(0.7));
+    } else {
+        weaponContainer.add(scene.add.rectangle(0,0,50,6,0xeeeeee));
+    }
+
+    const cdBar = scene.add.rectangle(0, -60, 45, 6, 0xffff00);
+    const iceOverlay = scene.add.rectangle(0, 0, 80, 110, 0x00ffff, 0.4).setVisible(false);
+
+    p.add([head, body, weaponContainer, cdBar, iceOverlay]);
+    
+    p.id = id; p.type = type; p.hp = 100; p.facing = (id === 1 ? 1 : -1);
+    p.atkCD = 0; p.sklCD = 0; p.isBlocking = false; p.isStunned = false;
+    p.cdBar = cdBar; p.iceOverlay = iceOverlay;
+    p.weapon = weaponContainer;
+
+    // Movement State
+    p.state = { left: false, right: false, jump: false };
+    
     return p;
 }
 
 function handleSkill(p, t) {
-    if (p.sklCD > 0 || p.stunned || gameState !== 'PLAY') return;
+    if (p.sklCD > 0 || p.isStunned || gameState !== 'PLAY') return;
     p.sklCD = 5000;
-    const s = p.scene;
+    const scene = p.scene;
 
     if (p.type === 'Wizard' || p.type === 'Freezer') {
-        let proj = s.add.circle(p.x, p.y, 16, p.type === 'Wizard' ? 0xff6600 : 0x00ffff);
-        s.physics.add.existing(proj);
-        proj.body.allowGravity = false;
-        proj.body.setVelocityX(p.facing * 650);
-        proj.owner = p.id; proj.dmg = (p.type === 'Wizard' ? 30 : 12);
-        projectiles.add(proj);
+        const color = p.type === 'Wizard' ? 0xff6600 : 0x00ffff;
+        const ball = scene.add.circle(p.x + (40 * p.facing), p.y, 18, color).setStrokeStyle(2, 0xffffff);
+        scene.physics.add.existing(ball);
+        ball.body.setAllowGravity(false).setVelocityX(p.facing * 700);
+        ball.owner = p.id; ball.dmg = (p.type === 'Wizard' ? 35 : 12);
+        projectiles.add(ball);
+
         if (p.type === 'Freezer') {
-            s.physics.add.overlap(proj, t, () => {
-                t.stunned = true; t.alpha = 0.5;
-                s.time.delayedCall(3000, () => { t.stunned = false; t.alpha = 1; });
-                proj.destroy();
+            scene.physics.add.overlap(ball, t, () => {
+                t.isStunned = true; t.iceOverlay.setVisible(true);
+                scene.time.delayedCall(3000, () => { t.isStunned = false; t.iceOverlay.setVisible(false); });
+                ball.destroy();
             });
         }
     } else if (p.type === 'Bomber') {
-        let b = s.add.circle(p.x, p.y, 14, 0x111111);
-        s.physics.add.existing(b);
-        b.body.setGravityY(2000).setVelocity(p.facing * 450, -900).setBounce(0.6).setCollideWorldBounds(true);
-        projectiles.add(b);
-        s.time.delayedCall(1600, () => {
-            let dist = Phaser.Math.Distance.Between(b.x, b.y, t.x, t.y);
-            if (dist < 150) t.hp -= 45;
-            b.destroy();
+        const bomb = scene.add.circle(p.x, p.y, 15, 0x111111).setStrokeStyle(2, 0xff0000);
+        scene.physics.add.existing(bomb);
+        bomb.body.setVelocity(p.facing * 450, -900).setBounce(0.5).setCollideWorldBounds(true);
+        bomb.isBomb = true;
+        projectiles.add(bomb);
+
+        scene.time.delayedCall(1600, () => {
+            if (!bomb.active) return;
+            const exp = scene.add.circle(bomb.x, bomb.y, 150, 0xff6600, 0.6);
+            if (Phaser.Math.Distance.Between(bomb.x, bomb.y, t.x, t.y) < 150) t.hp -= 45;
+            scene.tweens.add({ targets: exp, scale: 2, alpha: 0, duration: 300, onComplete: () => exp.destroy() });
+            bomb.destroy();
         });
     } else if (p.type === 'Ghost' || p.type === 'Reaper') {
-        let beam = s.add.rectangle(p.x + (400 * p.facing), p.y, 800, 50, p.type === 'Ghost' ? 0x00ffff : 0xff00ff, 0.6);
-        s.physics.add.existing(beam); beam.body.allowGravity = false;
-        beam.owner = p.id; beam.isBeam = true; beam.dmg = 60; projectiles.add(beam);
-        s.time.delayedCall(600, () => beam.destroy());
+        const beamColor = p.type === 'Ghost' ? 0x00ffff : 0xff00ff;
+        const beam = scene.add.rectangle(p.x + (400 * p.facing), p.y, 800, 50, beamColor, 0.6);
+        scene.physics.add.existing(beam);
+        beam.body.setAllowGravity(false);
+        beam.owner = p.id; beam.isBeam = true; beam.dmg = 60;
+        projectiles.add(beam);
+        scene.time.delayedCall(600, () => { if(beam) beam.destroy(); });
     } else {
-        s.tweens.add({ targets: p, x: p.x + (250 * p.facing), duration: 250 });
-        if (Math.abs(p.x - t.x) < 260) t.hp -= 25;
+        scene.tweens.add({ targets: p, x: p.x + (250 * p.facing), duration: 200 });
+        if (Math.abs(p.x - t.x) < 250) t.hp -= 25;
     }
 }
 
@@ -206,74 +273,134 @@ function update(time, delta) {
 
     [p1, p2].forEach(p => {
         p.atkCD -= delta; p.sklCD -= delta;
+        p.cdBar.width = Math.max(0, (1 - p.sklCD / 5000) * 45);
+        
         let vx = 0;
-        if (!p.stunned) {
-            if (p.id === 2 && mode === 1) runAI(p, p1);
-            if (p.isBlocking) { vx = 0; } 
-            else {
-                if (p.ctrl.L) vx = -280; else if (p.ctrl.R) vx = 280;
-                if (p.ctrl.J && p.body.touching.down) p.body.setVelocityY(-900);
+        if (!p.isStunned) {
+            if (p.id === 2 && mode === 1) updateAI(p, p1);
+            
+            if (p.isBlocking) {
+                vx = 0;
+            } else {
+                if (p.state.left) vx = -300;
+                else if (p.state.right) vx = 300;
+                if (p.state.jump && p.body.touching.down) p.body.setVelocityY(-950);
             }
         }
         p.body.setVelocityX(vx);
-        if (vx !== 0) { p.facing = vx > 0 ? 1 : -1; p.list[2].scaleX = p.facing; p.list[2].x = 22 * p.facing; }
+        if (vx !== 0) { 
+            p.facing = vx > 0 ? 1 : -1; 
+            p.weapon.scaleX = p.facing;
+            p.weapon.x = 25 * p.facing;
+        }
     });
 
     this.p1HP.width = (p1.hp / 100) * 250;
     this.p2HP.width = (p2.hp / 100) * 250;
-    if (p1.hp <= 0 || p2.hp <= 0 || matchTimer <= 0) endMatch.call(this);
+    
+    if (p1.hp <= 0 || p2.hp <= 0 || matchTimer <= 0) endGame.call(this);
 }
 
-function runAI(c, t) {
-    let d = Math.abs(c.x - t.x);
-    c.ctrl.L = c.x > t.x + 80;
-    c.ctrl.R = c.x < t.x - 80;
-    if (d < 120) {
-        if (c.atkCD <= 0) { c.atkCD = 500; t.hp -= 5; c.scene.tweens.add({targets: c.list[2], angle: c.facing*80, duration: 100, yoyo: true}); }
-        if (Math.random() < 0.015) handleSkill(c, t);
+function updateAI(c, t) {
+    const dist = Math.abs(c.x - t.x);
+    c.state.left = c.x > t.x + 100;
+    c.state.right = c.x < t.x - 100;
+    
+    // AI Skill usage
+    if (dist < 400 && c.sklCD <= 0 && Math.random() < 0.01) handleSkill(c, t);
+    
+    // AI Attack
+    if (dist < 120 && c.atkCD <= 0) {
+        c.atkCD = 500;
+        t.hp -= 5;
+        c.scene.tweens.add({ targets: c.weapon, angle: c.facing * 90, duration: 100, yoyo: true });
     }
 }
 
-function createUIControls(scene) {
-    const makeBtn = (x, y, txt, p, key) => {
-        let b = scene.add.circle(x, y, 42, 0xffffff, 0.2).setInteractive().setDepth(5000);
-        scene.add.text(x, y, txt).setOrigin(0.5);
-        b.on('pointerdown', () => {
-            if (key === 'A') { if(p.atkCD <= 0) { p.atkCD = 450; (p.id === 1 ? p2 : p1).hp -= 5; scene.tweens.add({targets: p.list[2], angle: p.facing*80, duration: 100, yoyo: true}); } }
-            else if (key === 'S') handleSkill(p, (p.id === 1 ? p2 : p1));
-            else if (key === 'B') p.isBlocking = true;
-            else p.ctrl[key] = true;
+// --- INPUT & UTILS ---
+
+function setupTouchInterface(scene) {
+    const btn = (x, y, txt, p, type) => {
+        const circle = scene.add.circle(x, y, 45, 0xffffff, 0.15).setInteractive().setDepth(1000);
+        scene.add.text(x, y, txt, { fontSize: '24px' }).setOrigin(0.5).setDepth(1001);
+        
+        circle.on('pointerdown', () => {
+            if (type === 'A') {
+                if (p.atkCD <= 0) {
+                    p.atkCD = 450;
+                    const target = (p.id === 1 ? p2 : p1);
+                    if (Math.abs(p.x - target.x) < 100) target.hp -= 5;
+                    scene.tweens.add({ targets: p.weapon, angle: p.facing * 90, duration: 100, yoyo: true });
+                }
+            } else if (type === 'S') handleSkill(p, (p.id === 1 ? p2 : p1));
+            else if (type === 'B') p.isBlocking = true;
+            else p.state[type] = true;
         });
-        b.on('pointerup', () => { if(key === 'B') p.isBlocking = false; else if (p.ctrl[key] !== undefined) p.ctrl[key] = false; });
-        b.on('pointerout', () => { if(key === 'B') p.isBlocking = false; else if (p.ctrl[key] !== undefined) p.ctrl[key] = false; });
+        
+        const stop = () => { if(type === 'B') p.isBlocking = false; else if(p.state[type] !== undefined) p.state[type] = false; };
+        circle.on('pointerup', stop);
+        circle.on('pointerout', stop);
     };
 
-    // P1 Controls
-    makeBtn(60, 400, 'L', p1, 'L'); makeBtn(150, 400, 'R', p1, 'R'); makeBtn(105, 315, 'J', p1, 'J');
-    makeBtn(260, 400, 'A', p1, 'A'); makeBtn(350, 400, 'S', p1, 'S'); makeBtn(305, 315, 'B', p1, 'B');
+    // P1 Layout
+    btn(70, 400, '←', p1, 'left');
+    btn(170, 400, '→', p1, 'right');
+    btn(120, 310, '↑', p1, 'jump');
+    btn(280, 400, 'ATK', p1, 'A');
+    btn(380, 400, 'SKL', p1, 'S');
+    btn(330, 310, 'BLK', p1, 'B');
 
+    // P2 Layout (Only if PVP)
     if (mode === 2) {
-        // P2 Controls
-        makeBtn(790, 400, 'R', p2, 'R'); makeBtn(700, 400, 'L', p2, 'L'); makeBtn(745, 315, 'J', p2, 'J');
-        makeBtn(590, 400, 'A', p2, 'A'); makeBtn(500, 400, 'S', p2, 'S'); makeBtn(545, 315, 'B', p2, 'B');
+        btn(780, 400, '→', p2, 'right');
+        btn(680, 400, '←', p2, 'left');
+        btn(730, 310, '↑', p2, 'jump');
+        btn(570, 400, 'ATK', p2, 'A');
+        btn(470, 400, 'SKL', p2, 'S');
+        btn(520, 310, 'BLK', p2, 'B');
     }
 }
 
-function endMatch() {
-    gameState = 'END'; this.physics.pause();
-    const ui = this.add.container(0, 0).setDepth(10000);
-    ui.add([this.add.rectangle(425, 240, 850, 480, 0x000, 0.8), this.add.text(425, 150, 'MATCH OVER', { fontSize: '60px' }).setOrigin(0.5)]);
+function createClashEffect(scene, x, y) {
+    for(let i=0; i<8; i++) {
+        const spark = scene.add.circle(x, y, 5, 0xffffff);
+        scene.physics.add.existing(spark);
+        spark.body.setVelocity(Phaser.Math.Between(-300, 300), Phaser.Math.Between(-300, 300));
+        scene.tweens.add({ targets: spark, alpha: 0, duration: 400, onComplete: () => spark.destroy() });
+    }
+}
+
+function runCountdown() {
+    gameState = 'COUNT';
+    this.physics.pause();
+    let cd = 3;
+    const txt = this.add.text(425, 240, '3', { fontSize: '120px', fontStyle: 'bold', color: '#00ffff' }).setOrigin(0.5);
+    this.time.addEvent({ delay: 1000, repeat: 3, callback: () => {
+        cd--;
+        if (cd > 0) txt.setText(cd);
+        else if (cd === 0) txt.setText('BEGIN');
+        else { txt.destroy(); this.physics.resume(); gameState = 'PLAY'; }
+    }});
+}
+
+function endGame() {
+    gameState = 'END';
+    this.physics.pause();
+    const win = p1.hp > p2.hp ? "PLAYER 1" : "PLAYER 2";
     
-    let rb = this.add.text(425, 260, 'REMATCH', { backgroundColor: '#2ecc71', padding: 15 }).setOrigin(0.5).setInteractive();
-    rb.on('pointerdown', () => {
-        const pool = ['Swordman', 'Wizard', 'Bomber', 'Digger', 'Freezer'];
-        if (p1IsRand) p1Type = Math.random() < 0.1 ? 'Ghost' : pool[Math.floor(Math.random() * 5)];
-        if (p2IsRand) p2Type = (p1Type === 'Ghost' ? 'Reaper' : pool[Math.floor(Math.random() * 5)]);
+    const overlay = this.add.container(0, 0).setDepth(10000);
+    overlay.add(this.add.rectangle(425, 240, 850, 480, 0x000000, 0.8));
+    overlay.add(this.add.text(425, 180, win + ' VICTORIOUS', { fontSize: '50px', color: '#fff' }).setOrigin(0.5));
+    
+    const remBtn = this.add.text(425, 280, 'REMATCH', { fontSize: '30px', backgroundColor: '#2ecc71', padding: 15 }).setOrigin(0.5).setInteractive();
+    remBtn.on('pointerdown', () => {
+        // Reroll Logic
+        const classes = ['Swordman', 'Wizard', 'Bomber', 'Digger', 'Freezer'];
+        if (p1IsRand) p1Type = Math.random() < 0.1 ? 'Ghost' : classes[Math.floor(Math.random() * 5)];
+        if (p2IsRand) p2Type = (p1Type === 'Ghost' ? 'Reaper' : classes[Math.floor(Math.random() * 5)]);
         startMatch.call(this);
     });
-
-    let mb = this.add.text(425, 340, 'EXIT TO MENU', { backgroundColor: '#e74c3c', padding: 15 }).setOrigin(0.5).setInteractive();
-    mb.on('pointerdown', () => location.reload());
+    overlay.add(remBtn);
 }
 </script>
 </body>

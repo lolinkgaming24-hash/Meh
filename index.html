@@ -3,27 +3,36 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Stickman Fight: Sendai Colony</title>
+    <title>Stickman Fight: Definitive Edition</title>
     <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser-arcade-physics.min.js"></script>
     <style>
-        body { margin: 0; background: #000; overflow: hidden; touch-action: none; font-family: 'Segoe UI', Arial, sans-serif; }
-        canvas { display: block; margin: 0 auto; border: 2px solid #333; }
+        body { margin: 0; background: #000; overflow: hidden; touch-action: none; font-family: 'Verdana', sans-serif; }
+        canvas { display: block; margin: 0 auto; box-shadow: 0 0 30px rgba(0,255,255,0.2); }
     </style>
 </head>
 <body>
 <script>
-/**
- * STICKMAN FIGHT - SENDAI COLONY VERSION
- * NO SHORTCUTS - FULL BEAM CLASHING - ADVANCED AI
+/** * STICKMAN FIGHT - FULL SOURCE CODE
+ * LOGIC: EXPLICIT | SHORTCUTS: NONE | COMPLEXITY: MAX
  */
+
+const HP_TABLE = { 
+    Swordman: 120, Wizard: 80, Bomber: 100, 
+    Digger: 90, Engineer: 110, Freezer: 100, 
+    Ghost: 220, Reaper: 190 
+};
 
 const config = {
     type: Phaser.AUTO,
     width: 850,
     height: 480,
+    backgroundColor: '#050505',
     scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
-    input: { activePointers: 5 },
-    physics: { default: 'arcade', arcade: { gravity: { y: 1800 }, debug: false } },
+    input: { activePointers: 10 }, // Increased for complex local PVP
+    physics: { 
+        default: 'arcade', 
+        arcade: { gravity: { y: 2000 }, debug: false } 
+    },
     scene: { preload: preload, create: create, update: update }
 };
 
@@ -32,14 +41,8 @@ const game = new Phaser.Game(config);
 let p1, p2, projectiles, floor, timerText, matchTimer;
 let gameState = 'MENU';
 let mode = 1; 
-let p1Type = 'Swordman', p2Type = 'Random';
-
-const CLASSES = ['Swordman', 'Wizard', 'Bomber', 'Digger', 'Engineer', 'Freezer'];
-const HP_TABLE = { 
-    Swordman: 120, Wizard: 80, Bomber: 100, 
-    Digger: 90, Engineer: 110, Freezer: 100, 
-    Ghost: 220, Reaper: 190 
-};
+let p1Type = 'Swordman', p2Type = 'Wizard';
+let isClashing = false;
 
 function preload() {}
 
@@ -48,24 +51,26 @@ function create() {
     showMenu.call(this);
 }
 
-// --- UI AND NAVIGATION ---
+// --- CHARACTER SELECTION & RNG ---
 
 function showMenu() {
     gameState = 'MENU';
     this.children.removeAll();
-    this.add.text(425, 100, 'STICKMAN FIGHT', { fontSize: '64px', color: '#fff', fontStyle: 'bold' }).setOrigin(0.5);
-    this.add.text(425, 160, 'SENDAI COLONY EDITION', { fontSize: '20px', color: '#0ff' }).setOrigin(0.5);
+    this.add.text(425, 80, 'STICKMAN FIGHT', { fontSize: '64px', color: '#fff', fontStyle: 'bold' }).setOrigin(0.5);
+    this.add.text(425, 140, 'SENDAI COLONY: NO SHORTCUTS', { fontSize: '18px', color: '#0ff' }).setOrigin(0.5);
     
-    createMainBtn(this, 425, 260, '1 PLAYER (VS CPU)', () => { mode = 1; selectChar.call(this, 1); });
-    createMainBtn(this, 425, 340, '2 PLAYERS (PVP)', () => { mode = 2; selectChar.call(this, 1); });
+    createMainBtn(this, 425, 250, 'START 1P (VS AI)', () => { mode = 1; selectChar.call(this, 1); });
+    createMainBtn(this, 425, 330, 'START 2P (PVP)', () => { mode = 2; selectChar.call(this, 1); });
 }
 
 function selectChar(pNum) {
     this.children.removeAll();
-    this.add.text(425, 50, `PLAYER ${pNum}: CHOOSE YOUR CLASS`, { fontSize: '28px', color: pNum === 1 ? '#0f0' : '#f00' }).setOrigin(0.5);
+    const color = pNum === 1 ? '#0f0' : '#f00';
+    this.add.text(425, 40, `PLAYER ${pNum} SELECTION`, { fontSize: '28px', color: color }).setOrigin(0.5);
     
-    CLASSES.forEach((name, i) => {
-        createMainBtn(this, 425, 100 + (i * 45), name, () => {
+    const classes = ['Swordman', 'Wizard', 'Bomber', 'Digger', 'Engineer', 'Freezer'];
+    classes.forEach((name, i) => {
+        createMainBtn(this, 425, 90 + (i * 45), name, () => {
             if(pNum === 1) { 
                 p1Type = name; 
                 if(mode === 2) selectChar.call(this, 2); 
@@ -77,7 +82,7 @@ function selectChar(pNum) {
         });
     });
 
-    createMainBtn(this, 425, 400, '?? RANDOM ??', () => {
+    createMainBtn(this, 425, 380, '?? SECRET RANDOM ??', () => {
         if(pNum === 1) { 
             p1Type = 'Random'; 
             if(mode === 2) selectChar.call(this, 2); 
@@ -89,120 +94,138 @@ function selectChar(pNum) {
     }, '#4b0082');
 }
 
-// --- CORE MECHANICS ---
-
-function rollChar(type, opponent) {
-    if (type !== 'Random') return type;
+function rollClass(requested, opponent) {
+    if (requested !== 'Random') return requested;
     let r = Math.random();
-    if (r < 0.01) return 'Ghost'; // 1% Ryu
-    if (opponent === 'Ghost' && r < 0.30) return 'Reaper'; // Yuta counter-roll
-    return CLASSES[Math.floor(Math.random() * CLASSES.length)];
+    if (r < 0.01) return 'Ghost'; // 1% Ryu Ishigori
+    if (opponent === 'Ghost' && r < 0.30) return 'Reaper'; // Yuta Okkotsu counter-pick
+    
+    const standard = ['Swordman', 'Wizard', 'Bomber', 'Digger', 'Engineer', 'Freezer'];
+    return standard[Math.floor(Math.random() * standard.length)];
 }
+
+// --- GAME INITIALIZATION ---
 
 function startGame() {
     this.children.removeAll();
     projectiles.clear(true, true);
     matchTimer = 99;
 
-    let c1 = rollChar(p1Type, 'none');
-    let c2 = rollChar(p2Type, c1);
-    
-    // Validate JJK Rivalry
-    if (c1 === 'Reaper' && c2 !== 'Ghost') c1 = 'Swordman';
-    if (c2 === 'Reaper' && c1 !== 'Ghost') c2 = 'Swordman';
+    const finalP1 = rollClass(p1Type, 'none');
+    const finalP2 = rollClass(p2Type, finalP1);
 
-    floor = this.add.rectangle(425, 470, 850, 20, 0x222222);
+    // Rivalry Constraint: Yuta cannot exist without Ryu
+    let p1Actual = finalP1, p2Actual = finalP2;
+    if (p1Actual === 'Reaper' && p2Actual !== 'Ghost') p1Actual = 'Swordman';
+    if (p2Actual === 'Reaper' && p1Actual !== 'Ghost') p2Actual = 'Swordman';
+
+    floor = this.add.rectangle(425, 470, 850, 20, 0x1a1a1a);
     this.physics.add.existing(floor, true);
 
-    p1 = createPlayer(this, 150, 300, 0x00ff00, c1, 1);
-    p2 = createPlayer(this, 700, 300, 0xff0000, c2, 2);
+    p1 = createEntity(this, 150, 300, 0x00ff00, p1Actual, 1);
+    p2 = createEntity(this, 700, 300, 0xff0000, p2Actual, 2);
 
     this.physics.add.collider([p1, p2], floor);
     
-    // Projectile Interaction Logic
+    // Complex Collision & Beam Clashing Logic
     this.physics.add.overlap(projectiles, [p1, p2], (victim, bullet) => {
         if (bullet.owner === victim.id) return;
-        
-        // Beam Clash Check
-        if (bullet.isBeam) {
-            let clashing = projectiles.getChildren().find(b => b.isBeam && b.owner !== bullet.owner);
-            if (clashing) return; // Beams are clashing, no damage
-        }
 
+        // Check for clashing: Find another beam from the opposite owner
+        let beams = projectiles.getChildren().filter(b => b.isBeam);
+        if (beams.length > 1) {
+            let p1Beam = beams.find(b => b.owner === 1);
+            let p2Beam = beams.find(b => b.owner === 2);
+            if (p1Beam && p2Beam) {
+                // Visualize clash
+                isClashing = true;
+                return; // Beams are hitting each other, players safe
+            }
+        }
+        isClashing = false;
+
+        // Engineer Shield Interception
         if (victim.shieldHits > 0 && !bullet.isBeam) {
             victim.shieldHits--;
             bullet.destroy();
             return;
         }
 
-        let dmg = bullet.dmg || 15;
-        victim.hp -= (victim.mBlock ? dmg * 0.2 : dmg);
+        let damage = bullet.dmg || 15;
+        if (victim.mBlock) damage *= 0.15; // 85% damage reduction on block
+        victim.hp -= damage;
+        
         if (!bullet.isBeam) bullet.destroy();
     });
 
-    // UI Bars
-    this.p1Health = this.add.rectangle(20, 30, 250, 15, 0x00ff00).setOrigin(0);
-    this.p2Health = this.add.rectangle(830, 30, 250, 15, 0xff0000).setOrigin(1, 0);
-    timerText = this.add.text(425, 30, '99', { fontSize: '32px', fontStyle: 'bold' }).setOrigin(0.5);
-
-    setupMobileUI(this);
-    createMainBtn(this, 425, 75, 'PAUSE', () => pauseGame.call(this));
+    // UI Overlay
+    this.p1HealthBG = this.add.rectangle(20, 30, 250, 15, 0x333333).setOrigin(0);
+    this.p1HealthFill = this.add.rectangle(20, 30, 250, 15, 0x00ff00).setOrigin(0);
+    this.p2HealthBG = this.add.rectangle(830, 30, 250, 15, 0x333333).setOrigin(1, 0);
+    this.p2HealthFill = this.add.rectangle(830, 30, 250, 15, 0xff0000).setOrigin(1, 0);
     
+    timerText = this.add.text(425, 30, '99', { fontSize: '36px', fontStyle: 'bold' }).setOrigin(0.5);
+    createMainBtn(this, 425, 75, 'PAUSE', () => togglePause.call(this), '#222');
+
+    setupControls(this);
     gameState = 'PLAY';
 }
 
-function createPlayer(scene, x, y, color, type, id) {
+function createEntity(scene, x, y, color, type, id) {
     let container = scene.add.container(x, y);
     scene.physics.add.existing(container);
     container.body.setCollideWorldBounds(true).setSize(40, 70).setOffset(-20, -35);
 
     let skin = (type === 'Ghost' || type === 'Reaper') ? 0xffffff : color;
     let head = scene.add.circle(0, -25, 15, skin);
-    let body = scene.add.rectangle(0, 5, 8, 40, skin);
+    let body = scene.add.rectangle(0, 5, 10, 40, skin);
     
-    // Ryu Hair
+    // Sprite Customization
     if(type === 'Ghost') {
-        container.add(scene.add.rectangle(10, -35, 30, 14, 0x111111).setOrigin(0, 0.5));
+        let pompadour = scene.add.rectangle(12, -35, 35, 15, 0x000000).setOrigin(0, 0.5);
+        container.add(pompadour);
     }
 
     let weapon = scene.add.container(20, 0);
     if (type === 'Reaper') {
-        weapon.add([scene.add.rectangle(0, 0, 50, 4, 0xffffff), scene.add.rectangle(-20, 0, 4, 12, 0x333)]);
+        weapon.add([scene.add.rectangle(0, 0, 50, 5, 0xeeeeee), scene.add.rectangle(-20, 0, 5, 15, 0x222222)]);
     } else if (type === 'Wizard') {
-        weapon.add([scene.add.rectangle(0, 0, 6, 60, 0x4a2c10), scene.add.circle(0, -30, 10, 0xff0000)]);
+        weapon.add([scene.add.rectangle(0, 0, 8, 65, 0x3e2723), scene.add.circle(0, -35, 12, 0xff0000)]);
     } else if (type === 'Digger') {
-        weapon.add([scene.add.rectangle(0, 0, 6, 35, 0x333), scene.add.rectangle(0, -15, 25, 6, 0x777)]);
+        weapon.add([scene.add.rectangle(0, 0, 6, 40, 0x424242), scene.add.rectangle(0, -18, 30, 8, 0x9e9e9e)]);
     } else if (type !== 'Ghost') {
-        weapon.add(scene.add.rectangle(0, 0, 40, 6, 0xaaaaaa));
+        weapon.add(scene.add.rectangle(0, 0, 45, 6, 0xcccccc));
     }
 
     container.add([head, body, weapon]);
     
-    // Skill Bar UI
-    container.cdBar = scene.add.rectangle(0, -55, 40, 4, 0xffffff).setOrigin(0.5);
-    container.add(container.cdBar);
+    // Sub-UI
+    container.cdFill = scene.add.rectangle(0, -55, 40, 4, 0xffffff).setOrigin(0.5);
+    container.add(container.cdFill);
 
-    // Stats
+    // Initial State
     container.id = id;
     container.type = type;
     container.hp = HP_TABLE[type];
     container.maxHp = HP_TABLE[type];
     container.facing = id === 1 ? 1 : -1;
     container.atkCD = 0;
-    container.skillTimer = 8000;
+    container.skillTimer = 8000; // Ready to start
     container.shieldHits = 0;
     container.isStealth = false;
     container.isStunned = false;
     container.mBlock = false;
 
-    // Effects
-    container.rika = scene.add.circle(-40, -45, 35, 0x111111, 0.4).setVisible(false);
-    container.shieldObj = scene.add.circle(0, 0, 60, 0x00ffff, 0.2).setVisible(false);
-    container.ice = scene.add.rectangle(0, 0, 70, 100, 0x00ffff, 0.4).setVisible(false);
-    container.add([container.rika, container.shieldObj, container.ice]);
+    // Visual State Entities
+    container.rika = scene.add.circle(-45, -50, 38, 0x1a1a1a, 0.6).setVisible(false);
+    container.shieldAura = scene.add.circle(0, 0, 65, 0x00e5ff, 0.25).setStrokeStyle(2, 0x00e5ff).setVisible(false);
+    container.iceBlock = scene.add.rectangle(0, 0, 75, 105, 0x81d4fa, 0.5).setVisible(false);
+    container.add([container.rika, container.shieldAura, container.iceBlock]);
 
     return container;
 }
+
+// --- GAME LOOP ---
 
 function update(time, delta) {
     if (gameState !== 'PLAY') return;
@@ -214,191 +237,273 @@ function update(time, delta) {
         p.atkCD -= delta;
         if(p.skillTimer < 8000) p.skillTimer += delta;
         
-        p.cdBar.width = (p.skillTimer / 8000) * 40;
-        p.shieldObj.setVisible(p.shieldHits > 0);
-        if (p.type === 'Reaper' && p.hp < p.maxHp/2) p.rika.setVisible(true);
+        // UI Updates
+        p.cdFill.width = (Math.min(p.skillTimer, 8000) / 8000) * 40;
+        p.shieldAura.setVisible(p.shieldHits > 0);
+        
+        // Rika logic
+        if (p.type === 'Reaper') {
+            const lowHP = p.hp < p.maxHp/2;
+            p.rika.setVisible(lowHP);
+            if(lowHP) {
+                p.rika.x = -45 * p.facing;
+                p.rika.alpha = 0.4 + Math.sin(time/200) * 0.2;
+            }
+        }
 
         if (!p.isStunned) {
-            let vx = 0;
+            let targetVX = 0;
             if (p.id === 1 || mode === 2) {
-                if (p.mLeft) vx = -250;
-                if (p.mRight) vx = 250;
-                if (p.mJump && p.body.touching.down) p.body.setVelocityY(-750);
+                if (p.mLeft) targetVX = -280;
+                if (p.mRight) targetVX = 280;
+                if (p.mJump && p.body.touching.down) p.body.setVelocityY(-850);
             } else {
-                runProAI(p, p1);
+                runSmartAI(p, p1);
             }
 
-            // Block Locking
+            // Block Physics
             if (p.mBlock) {
-                vx = 0;
-                p.list[2].alpha = 0.5; // weapon fade on block
+                targetVX = 0;
+                p.alpha = 0.8;
+                p.list[2].y = 10; // Lower weapon
             } else {
-                p.list[2].alpha = 1;
+                p.alpha = 1;
+                p.list[2].y = 0;
             }
 
-            p.body.setVelocityX(vx);
-            if (vx !== 0) { 
-                p.facing = vx > 0 ? 1 : -1; 
+            p.body.setVelocityX(targetVX);
+            if (targetVX !== 0) { 
+                p.facing = targetVX > 0 ? 1 : -1; 
                 p.list[2].scaleX = p.facing; 
                 p.list[2].x = 20 * p.facing; 
             }
         }
     });
 
-    // Beam Logic
+    // Projectile Updates (Beam Clashing Visualization)
     projectiles.getChildren().forEach(proj => {
         if (proj.isBeam) {
             proj.y = proj.launcher.y;
-            proj.x = proj.launcher.x + (400 * proj.launcher.facing);
+            proj.x = proj.launcher.x + (410 * proj.launcher.facing);
+            if(isClashing) {
+                proj.setAlpha(0.3); // Fade during clash
+            } else {
+                proj.setAlpha(0.7);
+            }
         }
     });
 
-    this.p1Health.width = (p1.hp/p1.maxHp) * 250;
-    this.p2Health.width = (p2.hp/p2.maxHp) * 250;
+    // Bars
+    this.p1HealthFill.width = Math.max(0, (p1.hp/p1.maxHp) * 250);
+    this.p2HealthFill.width = Math.max(0, (p2.hp/p2.maxHp) * 250);
 
-    if (p1.hp <= 0 || p2.hp <= 0 || matchTimer <= 0) endGame.call(this, p1.hp > p2.hp ? "P1" : "P2");
-}
-
-// --- ACTION HANDLERS ---
-
-function handleAttack(p, t) {
-    if(p.atkCD > 0 || p.isStunned || p.mBlock) return;
-    p.atkCD = 400;
-    p.scene.tweens.add({ targets: p.list[2], angle: p.facing * 85, duration: 100, yoyo: true });
-    
-    if (Phaser.Math.Distance.Between(p.x, p.y, t.x, t.y) < 85) {
-        if (t.shieldHits > 0) { t.shieldHits--; return; }
-        
-        let d = (p.type === 'Reaper' && p.hp < p.maxHp/2) ? 28 : 14;
-        if (p.isStealth) { 
-            p.isStealth = false; p.alpha = 1; 
-            t.isStunned = true; t.ice.setVisible(true);
-            p.scene.time.delayedCall(3000, () => { t.isStunned = false; t.ice.setVisible(false); });
-            d = 30;
-        }
-        t.hp -= (t.mBlock ? d * 0.2 : d);
+    // End Conditions
+    if (p1.hp <= 0 || p2.hp <= 0 || matchTimer <= 0) {
+        finishMatch.call(this, p1.hp > p2.hp ? "PLAYER 1" : "PLAYER 2");
     }
 }
 
-function handleSkill(p, t) {
+// --- PLAYER ACTIONS ---
+
+function doAttack(p, t) {
+    if(p.atkCD > 0 || p.isStunned || p.mBlock) return;
+    p.atkCD = 450;
+    
+    p.scene.tweens.add({ targets: p.list[2], angle: p.facing * 95, duration: 120, yoyo: true });
+    
+    const range = 90;
+    if (Phaser.Math.Distance.Between(p.x, p.y, t.x, t.y) < range) {
+        if (t.shieldHits > 0) { t.shieldHits--; return; }
+        
+        let power = 15;
+        if (p.type === 'Reaper' && p.hp < p.maxHp/2) power = 30; // Rika-enhanced strike
+        
+        if (p.isStealth) { 
+            p.isStealth = false; p.alpha = 1; 
+            t.isStunned = true; t.iceBlock.setVisible(true);
+            p.scene.time.delayedCall(3000, () => { t.isStunned = false; t.iceBlock.setVisible(false); });
+            power = 25;
+        }
+
+        const actualDamage = t.mBlock ? power * 0.15 : power;
+        t.hp -= actualDamage;
+    }
+}
+
+function doSkill(p, t) {
     if(p.skillTimer < 8000 || p.isStunned || p.mBlock) return;
     p.skillTimer = 0;
 
-    if (p.type === 'Digger') { p.isStealth = true; p.alpha = 0.3; }
-    else if (p.type === 'Engineer') { p.shieldHits = 3; }
-    else if (p.type === 'Bomber') {
-        let b = p.scene.add.circle(p.x, p.y - 20, 14, 0x111111);
-        p.scene.physics.add.existing(b);
-        b.body.setBounce(0.5).setDragX(150).setCollideWorldBounds(true).setVelocity(p.facing * 400, -600);
-        p.scene.physics.add.collider(b, floor);
-        p.scene.time.delayedCall(1800, () => {
-            let ex = p.scene.add.circle(b.x, b.y, 160, 0xff6600, 0.6);
-            if (Phaser.Math.Distance.Between(b.x, b.y, t.x, t.y) < 160) {
-                t.hp -= 40; t.body.setVelocity((t.x - b.x) * 10, -700);
+    const scene = p.scene;
+
+    switch(p.type) {
+        case 'Digger':
+            p.isStealth = true;
+            p.alpha = 0.25;
+            break;
+            
+        case 'Engineer':
+            p.shieldHits = 3;
+            break;
+            
+        case 'Bomber':
+            let bomb = scene.add.circle(p.x, p.y - 20, 15, 0x000000);
+            scene.physics.add.existing(bomb);
+            bomb.body.setBounce(0.6).setDragX(200).setCollideWorldBounds(true).setVelocity(p.facing * 500, -700);
+            bomb.body.setAngularVelocity(300 * p.facing);
+            scene.physics.add.collider(bomb, floor);
+            
+            scene.time.delayedCall(2000, () => {
+                let blast = scene.add.circle(bomb.x, bomb.y, 170, 0xff3d00, 0.7);
+                if (Phaser.Math.Distance.Between(bomb.x, bomb.y, t.x, t.y) < 170) {
+                    t.hp -= 45;
+                    t.body.setVelocity((t.x - bomb.x) * 12, -800);
+                }
+                bomb.destroy();
+                scene.tweens.add({ targets: blast, scale: 2.5, alpha: 0, duration: 500, onComplete: () => blast.destroy() });
+            });
+            break;
+            
+        case 'Wizard':
+            let fball = scene.add.circle(p.x, p.y, 25, 0xff5722).setStrokeStyle(3, 0xffff00);
+            scene.physics.add.existing(fball);
+            fball.body.setAllowGravity(false).setVelocityX(p.facing * 550);
+            fball.owner = p.id; fball.dmg = 45; 
+            projectiles.add(fball);
+            break;
+            
+        case 'Ghost':
+        case 'Reaper':
+            if (p.type === 'Reaper' && p.hp >= p.maxHp/2) {
+                p.skillTimer = 7000; // Refund if Rika not active
+                return;
             }
-            b.destroy(); p.scene.tweens.add({ targets: ex, scale: 2, alpha: 0, duration: 400, onComplete: () => ex.destroy() });
-        });
-    } else if (p.type === 'Wizard') {
-        let f = p.scene.add.circle(p.x, p.y, 22, 0xff4400);
-        p.scene.physics.add.existing(f); f.body.setAllowGravity(false).setVelocityX(p.facing * 600);
-        f.owner = p.id; f.dmg = 45; projectiles.add(f);
-    } else if (p.type === 'Ghost' || (p.type === 'Reaper' && p.hp < p.maxHp/2)) {
-        let b = p.scene.add.rectangle(0, 0, 800, 65, p.type==='Ghost' ? 0x00ffff : 0xff00ff, 0.7);
-        p.scene.physics.add.existing(b); b.body.setAllowGravity(false);
-        b.owner = p.id; b.isBeam = true; b.dmg = 6; b.launcher = p;
-        projectiles.add(b); p.scene.time.delayedCall(1600, () => b.destroy());
+            let beam = scene.add.rectangle(0, 0, 850, 70, p.type === 'Ghost' ? 0x00e5ff : 0xe91e63, 0.7);
+            scene.physics.add.existing(beam);
+            beam.body.setAllowGravity(false);
+            beam.owner = p.id; beam.isBeam = true; beam.dmg = 7; beam.launcher = p;
+            projectiles.add(beam);
+            scene.time.delayedCall(1600, () => beam.destroy());
+            break;
+            
+        case 'Freezer':
+            let ice = scene.add.circle(p.x + (100 * p.facing), p.y, 80, 0x03a9f4, 0.3);
+            if (Phaser.Math.Distance.Between(ice.x, ice.y, t.x, t.y) < 100) {
+                t.isStunned = true; t.iceBlock.setVisible(true);
+                scene.time.delayedCall(2500, () => { t.isStunned = false; t.iceBlock.setVisible(false); });
+            }
+            scene.time.delayedCall(500, () => ice.destroy());
+            break;
     }
 }
 
-// --- AI LOGIC ---
+// --- AI INTELLIGENCE ---
 
-function runProAI(c, t) {
-    let d = Math.abs(c.x - t.x);
-    
-    // Defensive Logic: Block if player is attacking or if HP is low
-    c.mBlock = (d < 100 && t.atkCD < 100) || (d < 300 && projectiles.getChildren().length > 0);
+function runSmartAI(c, t) {
+    const dist = Math.abs(c.x - t.x);
+    const hasIncoming = projectiles.getChildren().filter(p => p.owner !== c.id && Math.abs(p.x - c.x) < 250).length > 0;
 
-    // Movement Logic
+    // 1. Reactive Defense
+    if (hasIncoming && c.body.touching.down) {
+        if (Math.random() > 0.3) {
+            c.mJump = true;
+            c.scene.time.delayedCall(150, () => c.mJump = false);
+        } else {
+            c.mBlock = true;
+        }
+    } else {
+        c.mBlock = (dist < 110 && t.atkCD < 150); // Block in melee
+    }
+
+    // 2. Offense
     if (!c.mBlock) {
-        if (d > 140) {
+        if (dist > 150) {
             c.mLeft = c.x > t.x;
             c.mRight = c.x < t.x;
         } else {
             c.mLeft = false; c.mRight = false;
-            handleAttack(c, t);
+            if (c.atkCD <= 0) doAttack(c, t);
         }
     }
 
-    // Reactionary Jump
-    if (projectiles.getChildren().length > 0 && d < 250 && c.body.touching.down) {
-        c.mJump = true;
-        c.scene.time.delayedCall(150, () => c.mJump = false);
+    // 3. Skill Execution
+    if (c.skillTimer >= 8000) {
+        if (c.type === 'Wizard' || c.type === 'Ghost') {
+            if (dist > 300) doSkill(c, t);
+        } else if (dist < 200) {
+            doSkill(c, t);
+        }
     }
-
-    if (c.skillTimer >= 8000) handleSkill(c, t);
 }
 
-// --- UI HELPERS ---
+// --- INPUT & UI HELPERS ---
 
-function setupMobileUI(scene) {
-    const createBtn = (x, y, label, cb) => {
-        let c = scene.add.circle(x, y, 42, 0xffffff, 0.15).setInteractive().setDepth(2000);
-        scene.add.text(x, y, label, { fontSize: '24px' }).setOrigin(0.5).setDepth(2001);
-        c.on('pointerdown', () => cb(true));
-        c.on('pointerup', () => cb(false));
+function setupControls(scene) {
+    const gui = (x, y, txt, color, callback) => {
+        let btn = scene.add.circle(x, y, 42, 0xffffff, 0.1).setInteractive().setDepth(5000);
+        scene.add.text(x, y, txt, { fontSize: '24px', color: color }).setOrigin(0.5).setDepth(5001);
+        btn.on('pointerdown', (ptr) => { btn.setAlpha(0.3); callback(true); });
+        btn.on('pointerup', () => { btn.setAlpha(0.1); callback(false); });
+        btn.on('pointerout', () => { btn.setAlpha(0.1); callback(false); });
     };
-    // P1
-    createBtn(70, 410, 'L', v => p1.mLeft = v);
-    createBtn(170, 410, 'R', v => p1.mRight = v);
-    createBtn(120, 330, 'J', v => p1.mJump = v);
-    createBtn(280, 410, 'A', v => { if(v) handleAttack(p1, p2); });
-    createBtn(375, 410, 'S', v => { if(v) handleSkill(p1, p2); });
-    createBtn(325, 330, 'B', v => p1.mBlock = v);
-    
+
+    // P1 Controls
+    gui(70, 410, '←', '#0f0', v => p1.mLeft = v);
+    gui(170, 410, '→', '#0f0', v => p1.mRight = v);
+    gui(120, 330, '↑', '#0f0', v => p1.mJump = v);
+    gui(280, 410, 'A', '#fff', v => { if(v) doAttack(p1, p2); });
+    gui(375, 410, 'S', '#0ff', v => { if(v) doSkill(p1, p2); });
+    gui(325, 330, 'B', '#ff0', v => p1.mBlock = v);
+
+    // P2 Controls (PVP Only)
     if (mode === 2) {
-        // P2
-        createBtn(780, 410, 'R', v => p2.mRight = v);
-        createBtn(680, 410, 'L', v => p2.mLeft = v);
-        createBtn(730, 330, 'J', v => p2.mJump = v);
-        createBtn(570, 410, 'A', v => { if(v) handleAttack(p2, p1); });
-        createBtn(475, 410, 'S', v => { if(v) handleSkill(p2, p1); });
-        createBtn(525, 330, 'B', v => p2.mBlock = v);
+        gui(780, 410, '→', '#f00', v => p2.mRight = v);
+        gui(680, 410, '←', '#f00', v => p2.mLeft = v);
+        gui(730, 330, '↑', '#f00', v => p2.mJump = v);
+        gui(570, 410, 'A', '#fff', v => { if(v) doAttack(p2, p1); });
+        gui(475, 410, 'S', '#0ff', v => { if(v) doSkill(p2, p1); });
+        gui(525, 330, 'B', '#ff0', v => p2.mBlock = v);
     }
 }
 
-function pauseGame() {
-    if (gameState !== 'PLAY') return;
-    this.physics.pause();
-    gameState = 'PAUSE';
-    this.pauseLayer = this.add.container(0,0).setDepth(7000);
-    this.pauseLayer.add([
-        this.add.rectangle(425, 240, 850, 480, 0x000, 0.7),
-        this.add.text(425, 180, 'PAUSED', { fontSize: '48px' }).setOrigin(0.5)
-    ]);
-    createMainBtn(this, 425, 260, 'RESUME', () => { 
-        this.physics.resume(); 
-        gameState = 'PLAY'; 
-        this.pauseLayer.destroy(); 
-    });
-    createMainBtn(this, 425, 330, 'QUIT', () => location.reload());
+function togglePause() {
+    if (gameState === 'PLAY') {
+        this.physics.pause();
+        gameState = 'PAUSE';
+        this.pauseMenu = this.add.container(0,0).setDepth(10000);
+        this.pauseMenu.add([
+            this.add.rectangle(425, 240, 850, 480, 0x000, 0.8),
+            this.add.text(425, 180, 'GAME PAUSED', { fontSize: '48px' }).setOrigin(0.5)
+        ]);
+        createMainBtn(this, 425, 280, 'RESUME', () => { 
+            this.physics.resume(); 
+            gameState = 'PLAY'; 
+            this.pauseMenu.destroy(); 
+        }, '#2e7d32');
+        createMainBtn(this, 425, 360, 'MAIN MENU', () => location.reload(), '#c62828');
+    }
 }
 
-function createMainBtn(scene, x, y, txt, cb, col = '#333') {
-    let b = scene.add.text(x, y, txt, { backgroundColor: col, padding: 12, fontSize: '18px' })
-        .setOrigin(0.5).setInteractive().on('pointerdown', cb).setDepth(8000);
-    if(gameState === 'PAUSE' && scene.pauseLayer) scene.pauseLayer.add(b);
+function createMainBtn(scene, x, y, txt, cb, col = '#222') {
+    let b = scene.add.text(x, y, txt, { backgroundColor: col, padding: {x:20, y:12}, fontSize: '20px', color: '#fff' })
+        .setOrigin(0.5).setInteractive()
+        .on('pointerdown', cb)
+        .on('pointerover', () => b.setStyle({ backgroundColor: '#444' }))
+        .on('pointerout', () => b.setStyle({ backgroundColor: col }))
+        .setDepth(11000);
 }
 
-function endGame(winner) {
+function finishMatch(winner) {
     gameState = 'END';
     this.physics.pause();
-    let endLayer = this.add.container(0,0).setDepth(9000);
-    endLayer.add([
-        this.add.rectangle(425, 240, 850, 480, 0x000, 0.85),
-        this.add.text(425, 200, winner + " HAS CONQUERED", { fontSize: '42px', color: '#fff' }).setOrigin(0.5)
+    let layer = this.add.container(0,0).setDepth(12000);
+    layer.add([
+        this.add.rectangle(425, 240, 850, 480, 0x000, 0.9),
+        this.add.text(425, 200, winner + " WINS!", { fontSize: '56px', color: '#fff' }).setOrigin(0.5)
     ]);
-    createMainBtn(this, 425, 300, 'REMATCH', () => startGame.call(this), '#1a1a1a');
+    createMainBtn(this, 425, 320, 'REMATCH', () => startGame.call(this), '#00796b');
 }
+
 </script>
 </body>
 </html>
